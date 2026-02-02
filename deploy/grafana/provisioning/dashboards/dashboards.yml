@@ -1,0 +1,14 @@
+# Grafana dashboard provisioning
+apiVersion: 1
+
+providers:
+  - name: 'L1 Ingestion Dashboards'
+    orgId: 1
+    folder: 'L1 Ingestion'
+    folderUid: 'l1-ingestion'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

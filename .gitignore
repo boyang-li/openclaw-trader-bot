@@ -1,0 +1,82 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+coverage.*
+coverage/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+*.log
+*.tmp
+tmp/
+temp/
+
+# Build artifacts
+dist/
+
+# Debug
+__debug_bin*
+debug
+
+# Local config
+*.local.yaml
+*.local.yml
+configs/*.local.*
+
+# HuggingFace cache (for SLM)
+.cache/
+
+# Python (for SLM worker)
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+.Python
+venv/
+.venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/

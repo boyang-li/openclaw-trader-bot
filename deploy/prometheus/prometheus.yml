@@ -1,0 +1,76 @@
+# Prometheus configuration for L1 Ingestion Pipeline
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'l1-ingestion'
+    environment: 'local'
+
+# Alertmanager configuration (optional, for future use)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Rule files (optional, for future use)
+# rule_files:
+#   - "rules/*.yml"
+
+scrape_configs:
+  # =============================================================================
+  # Prometheus self-monitoring
+  # =============================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # =============================================================================
+  # L1 Ingestor Services
+  # =============================================================================
+  - job_name: 'l1-gdelt'
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels:
+          service: 'gdelt'
+          category: 'geopolitical'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'l1-fred'
+    static_configs:
+      - targets: ['host.docker.internal:8082']
+        labels:
+          service: 'fred'
+          category: 'macro'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'l1-binance'
+    static_configs:
+      - targets: ['host.docker.internal:8083']
+        labels:
+          service: 'binance'
+          category: 'crypto'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # =============================================================================
+  # Kafka Metrics (via JMX exporter, if enabled)
+  # =============================================================================
+  # - job_name: 'kafka'
+  #   static_configs:
+  #     - targets: ['kafka:7071']
+  #       labels:
+  #         service: 'kafka'
+
+  # =============================================================================
+  # Redis Metrics (optional)
+  # =============================================================================
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         service: 'redis'

@@ -47,12 +47,10 @@ services:
       - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
       - --pandaproxy-addr=0.0.0.0:8082
       - --advertise-pandaproxy-addr=redpanda:8082
-      - --schema-registry-addr=0.0.0.0:8081
-      - --advertise-schema-registry-addr=redpanda:8081
     ports:
       - "9092:9092"     # Kafka API
       - "9644:9644"     # Admin API
-      # Note: 8081/8082 internal only to avoid conflict with providers
+      - "8082:8082"     # REST Proxy (Pandaproxy)
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -74,38 +72,15 @@ services:
       redpanda:
         condition: service_healthy
     entrypoint: ["/bin/bash", "-c"]
-    command: |
-      "
-      echo 'Creating topics...'
-      
-      # Raw signals from providers
-      rpk topic create l1.signals.raw \
-        --brokers redpanda:9092 \
-        --partitions 6 \
-        --config retention.ms=604800000 \
-        --config max.message.bytes=10485760 || true
-      
-      # Enriched signals from SLM
-      rpk topic create l1.signals.enriched \
-        --brokers redpanda:9092 \
-        --partitions 6 \
-        --config retention.ms=604800000 || true
-      
-      # Filtered signals for alerting
-      rpk topic create l1.signals.filtered \
-        --brokers redpanda:9092 \
-        --partitions 3 \
-        --config retention.ms=2592000000 || true
-      
-      # Dead letter queue
-      rpk topic create l1.signals.dlq \
-        --brokers redpanda:9092 \
-        --partitions 1 \
-        --config retention.ms=2592000000 || true
-      
-      echo 'Topics created:'
-      rpk topic list --brokers redpanda:9092
-      "
+    command:
+      - |
+        echo 'Creating topics...'
+        rpk topic create l1.signals.raw --brokers redpanda:9092 --partitions 6 --config retention.ms=604800000 --config max.message.bytes=10485760 || true
+        rpk topic create l1.signals.enriched --brokers redpanda:9092 --partitions 6 --config retention.ms=604800000 || true
+        rpk topic create l1.signals.filtered --brokers redpanda:9092 --partitions 3 --config retention.ms=2592000000 || true
+        rpk topic create l1.signals.dlq --brokers redpanda:9092 --partitions 1 --config retention.ms=2592000000 || true
+        echo 'Topics created:'
+        rpk topic list --brokers redpanda:9092
     networks:
       - l1-network
 
@@ -116,7 +91,7 @@ services:
   # GDELT - Global Event Database (Geopolitical)
   gdelt:
     build:
-      context: ../..
+      context: ..
       dockerfile: deploy/docker/Dockerfile.provider
       args:
         PROVIDER: gdelt
@@ -139,7 +114,7 @@ services:
   # FRED - Federal Reserve Economic Data (Macro)
   fred:
     build:
-      context: ../..
+      context: ..
       dockerfile: deploy/docker/Dockerfile.provider
       args:
         PROVIDER: fred
@@ -162,7 +137,7 @@ services:
   # Binance - Cryptocurrency Market Data (Crypto)
   binance:
     build:
-      context: ../..
+      context: ..
       dockerfile: deploy/docker/Dockerfile.provider
       args:
         PROVIDER: binance
@@ -185,7 +160,7 @@ services:
   # CME COT - Commitment of Traders Report (Macro)
   cot:
     build:
-      context: ../..
+      context: ..
       dockerfile: deploy/docker/Dockerfile.provider
       args:
         PROVIDER: cot

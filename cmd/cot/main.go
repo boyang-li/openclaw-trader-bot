@@ -39,8 +39,6 @@ func main() {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
 	}
 
-	cfg.HTTP.Port = 8085
-
 	cotCfg, err := config.LoadCOTConfig()
 	if err != nil {
 		logger.Fatal("Failed to load COT configuration", zap.Error(err))

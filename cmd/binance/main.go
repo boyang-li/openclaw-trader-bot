@@ -39,8 +39,6 @@ func main() {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
 	}
 
-	cfg.HTTP.Port = 8083
-
 	binanceCfg, err := config.LoadBinanceConfig()
 	if err != nil {
 		logger.Fatal("Failed to load Binance configuration", zap.Error(err))

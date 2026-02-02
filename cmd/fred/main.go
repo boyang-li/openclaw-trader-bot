@@ -39,8 +39,6 @@ func main() {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
 	}
 
-	cfg.HTTP.Port = 8082
-
 	fredCfg, err := config.LoadFREDConfig()
 	if err != nil {
 		logger.Fatal("FRED API key is required", zap.Error(err))

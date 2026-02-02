@@ -1,0 +1,65 @@
+# =============================================================================
+# Multi-stage Dockerfile for Go Provider Services
+# Usage: docker build --build-arg PROVIDER=gdelt -f deploy/docker/Dockerfile.provider .
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Build
+# -----------------------------------------------------------------------------
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Copy go mod files first for layer caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the specified provider binary
+# PROVIDER should be one of: gdelt, fred, binance, cot, whalealert, tradingeconomics, telegram
+ARG PROVIDER
+RUN if [ -z "$PROVIDER" ]; then echo "PROVIDER arg required" && exit 1; fi
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s -X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')" \
+    -o /provider \
+    ./cmd/${PROVIDER}
+
+# -----------------------------------------------------------------------------
+# Stage 2: Runtime
+# -----------------------------------------------------------------------------
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user for security
+RUN addgroup -g 1000 -S appgroup && \
+    adduser -u 1000 -S appuser -G appgroup
+
+# Copy binary from builder
+COPY --from=builder /provider /provider
+
+# Copy timezone data
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+
+# Set ownership
+RUN chown appuser:appgroup /provider
+
+# Switch to non-root user
+USER appuser
+
+# Expose health check port (all providers use 8080 internally)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q --spider http://localhost:8080/health || exit 1
+
+# Run the provider
+ENTRYPOINT ["/provider"]

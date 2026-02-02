@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md
+
+# Development files
+.env
+.env.local
+*.log
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker
+
+# Python (not needed for Go builds)
+python/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+venv/
+.venv/
+
+# Data directories
+data/
+*.db
+*.sqlite
+
+# OS files
+.DS_Store
+Thumbs.db

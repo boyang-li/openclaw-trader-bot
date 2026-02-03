@@ -2,7 +2,7 @@
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
 > **Last Updated**: 2026-02-03
-> **Status**: Wave 4.5 Complete (SLM Worker + Alerter Running)
+> **Status**: Wave 5 Complete (Persistence Layer Running)
 
 ---
 
@@ -41,6 +41,7 @@
 |---------|-------------|--------|
 | SLM Worker | Signal enrichment via Qwen 2.5-1.5B | ✅ Running |
 | Alerter | Telegram/Discord notifications | ✅ Running |
+| Persister | SQLite storage with Query API | ✅ Running |
 
 ---
 
@@ -95,6 +96,14 @@ l1-ingestion/
 │   │   ├── main.py         # Kafka consumer loop
 │   │   ├── filter.py       # Alert filtering rules
 │   │   ├── notifier.py     # Telegram/Discord senders
+│   │   ├── config.py       # Environment configuration
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   ├── persister/          # Signal persistence service
+│   │   ├── __init__.py
+│   │   ├── main.py         # Kafka consumer loop
+│   │   ├── database.py     # SQLite manager with schema
+│   │   ├── api.py          # HTTP query API
 │   │   ├── config.py       # Environment configuration
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
@@ -629,9 +638,16 @@ for _, f := range zipReader.File {
 - Rate limiting (30/min) and deduplication (5min window)
 - Location: `python/alerter/`
 
-## Future Work (Wave 5+)
+### Wave 5: Persistence Layer ✅
+- Consumes enriched signals from `l1.signals.enriched` topic
+- Persists to SQLite database with WAL mode for concurrent access
+- Deduplication prevents storing duplicate signals
+- HTTP Query API on port 8088 with filtering (source, category, urgency, time range)
+- Backup script with compression and retention policy
+- Location: `python/persister/`
 
-- **Wave 5**: Persistence Layer (SQLite/DuckDB for signal storage and replay)
+## Future Work (Wave 6+)
+
 - **Wave 6**: Grafana dashboards for signal flow visualization
 - **Wave 7**: Paid providers (Whale Alert, Trading Economics) when needed
 - **Wave 8**: Kubernetes manifests, CI/CD pipeline

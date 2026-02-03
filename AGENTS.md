@@ -20,6 +20,7 @@ Before working on this codebase, read these critical files:
 ✅ COT        (8085) - Futures positioning from CFTC public files
 ✅ SLM Worker        - Signal enrichment via Qwen 2.5-1.5B-Instruct
 ✅ Alerter           - Telegram notifications for high-priority signals
+✅ Persister  (8088) - SQLite storage with Query API
 ⏸️ FRED      (8082) - Needs free API key from fred.stlouisfed.org
 ⏸️ Others           - Require paid API keys
 ```
@@ -78,6 +79,7 @@ Before working on this codebase, read these critical files:
 |---------|----------|---------|
 | SLM Worker | `python/slm_worker/` | Enriches signals with Qwen 2.5-1.5B model |
 | Alerter | `python/alerter/` | Sends Telegram notifications for high-priority signals |
+| Persister | `python/persister/` | Stores signals to SQLite with Query API |
 
 **Python Code Patterns**:
 ```python
@@ -444,11 +446,13 @@ SLM Worker (Python - Qwen 2.5-1.5B)
     ▼
 l1.signals.enriched (Kafka topic)
     │
-    ▼
-Alerter (Python - Telegram notifications)
-    │
-    ▼
-📱 User's Phone
+    ├──────────────────────┐
+    ▼                      ▼
+Alerter                 Persister
+(Telegram)              (SQLite)
+    │                      │
+    ▼                      ▼
+📱 User's Phone        💾 Query API (:8088)
 ```
 
 ### Sensor-Dev → Processor-Dev

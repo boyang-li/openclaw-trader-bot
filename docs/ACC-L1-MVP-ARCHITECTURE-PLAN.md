@@ -187,7 +187,7 @@ l1-ingestion/
 | Wave 3.5 | Containerization + Redpanda Migration | ✅ COMPLETE |
 | Wave 4 | Python SLM Worker (Qwen 2.5-1.5B enrichment) | ✅ COMPLETE |
 | Wave 4.5 | Telegram Alerter (real-time notifications) | ✅ COMPLETE |
-| Wave 5 | Persistence Layer (SQLite/DuckDB) | 🔄 PENDING |
+| Wave 5 | Persistence Layer (SQLite storage + Query API) | ✅ COMPLETE |
 | Wave 6 | Observability (Grafana dashboards) | 🔄 PENDING |
 | Wave 7 | Paid Providers (Whale Alert, Trading Economics) | ⏸️ DEFERRED |
 | Wave 8 | Snowflake Integration | ⏸️ DEFERRED |

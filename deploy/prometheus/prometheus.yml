@@ -1,0 +1,126 @@
+# =============================================================================
+# Prometheus Configuration for L1 Ingestion Pipeline
+# =============================================================================
+# Scrapes metrics from all Go providers and Redpanda
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'l1-ingestion'
+    environment: 'docker'
+
+# Alertmanager configuration (optional, for future use)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Rule files (optional, for future use)
+# rule_files:
+#   - "rules/*.yml"
+
+scrape_configs:
+  # ===========================================================================
+  # Prometheus self-monitoring
+  # ===========================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # ===========================================================================
+  # Redpanda Metrics
+  # ===========================================================================
+  - job_name: 'redpanda'
+    static_configs:
+      - targets: ['redpanda:9644']
+        labels:
+          service: 'redpanda'
+    metrics_path: '/public_metrics'
+    scrape_interval: 10s
+
+  # ===========================================================================
+  # Go Provider Services
+  # ===========================================================================
+  - job_name: 'l1-gdelt'
+    static_configs:
+      - targets: ['gdelt:8080']
+        labels:
+          service: 'gdelt'
+          category: 'geopolitical'
+          provider: 'gdelt'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'l1-fred'
+    static_configs:
+      - targets: ['fred:8080']
+        labels:
+          service: 'fred'
+          category: 'macro'
+          provider: 'fred'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'l1-binance'
+    static_configs:
+      - targets: ['binance:8080']
+        labels:
+          service: 'binance'
+          category: 'crypto'
+          provider: 'binance'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'l1-cot'
+    static_configs:
+      - targets: ['cot:8080']
+        labels:
+          service: 'cot'
+          category: 'macro'
+          provider: 'cot'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'l1-telegram'
+    static_configs:
+      - targets: ['telegram-ingestor:8080']
+        labels:
+          service: 'telegram'
+          category: 'geopolitical'
+          provider: 'telegram'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # ===========================================================================
+  # Python Services (future)
+  # ===========================================================================
+  # - job_name: 'l1-slm-worker'
+  #   static_configs:
+  #     - targets: ['slm-worker:8080']
+  #       labels:
+  #         service: 'slm-worker'
+  #         category: 'processing'
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 10s
+
+  # - job_name: 'l1-telegram-alerter'
+  #   static_configs:
+  #     - targets: ['telegram-alerter:8080']
+  #       labels:
+  #         service: 'telegram-alerter'
+  #         category: 'alerting'
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 10s
+
+  # ===========================================================================
+  # Redis Metrics (optional - requires redis-exporter sidecar)
+  # ===========================================================================
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         service: 'redis'

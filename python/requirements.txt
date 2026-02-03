@@ -1,0 +1,15 @@
+# ACC L1-Ingestion: SLM Worker Dependencies
+# Python 3.11+
+
+# Kafka
+aiokafka[lz4]>=0.10.0
+
+# ML/LLM
+torch>=2.1.0
+transformers>=4.36.0
+accelerate>=0.25.0
+bitsandbytes>=0.41.0  # For 4-bit quantization (GPU only)
+sentencepiece>=0.1.99  # Tokenizer dependency
+
+# Utilities
+python-dotenv>=1.0.0  # For local .env file loading

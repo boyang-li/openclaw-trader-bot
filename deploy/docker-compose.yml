@@ -182,6 +182,40 @@ services:
       - l1-network
 
   # ===========================================================================
+  # Python SLM Worker (Signal Enrichment)
+  # ===========================================================================
+  slm-worker:
+    build:
+      context: ../python
+      dockerfile: Dockerfile
+    container_name: l1-slm-worker
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - INPUT_TOPIC=l1.signals.raw
+      - OUTPUT_TOPIC=l1.signals.enriched
+      - DLQ_TOPIC=l1.signals.dlq
+      - CONSUMER_GROUP=slm-worker
+      - MODEL_NAME=${SLM_MODEL_NAME:-Qwen/Qwen2.5-1.5B-Instruct}
+      - DEVICE=${SLM_DEVICE:-cpu}
+      - BATCH_SIZE=${SLM_BATCH_SIZE:-5}
+      - USE_4BIT=${SLM_USE_4BIT:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - huggingface-cache:/app/.cache/huggingface
+    restart: unless-stopped
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  # ===========================================================================
   # Monitoring Stack
   # ===========================================================================
   prometheus:
@@ -260,3 +294,4 @@ volumes:
   prometheus-data:
   grafana-data:
   redis-data:
+  huggingface-cache:

@@ -1,10 +1,10 @@
 package kafka
 
 const (
-	TopicRawSignals      = "raw-signals"
-	TopicEnrichedSignals = "enriched-signals"
-	TopicDLQIngestion    = "dlq-ingestion"
-	TopicDLQEnrichment   = "dlq-enrichment"
+	TopicRawSignals      = "l1.signals.raw"
+	TopicEnrichedSignals = "l1.signals.enriched"
+	TopicFilteredSignals = "l1.signals.filtered"
+	TopicDLQ             = "l1.signals.dlq"
 )
 
 type TopicConfig struct {
@@ -19,15 +19,15 @@ func DefaultTopics() []TopicConfig {
 	return []TopicConfig{
 		RawSignalsTopic(),
 		EnrichedSignalsTopic(),
-		DLQIngestionTopic(),
-		DLQEnrichmentTopic(),
+		FilteredSignalsTopic(),
+		DLQTopic(),
 	}
 }
 
 func RawSignalsTopic() TopicConfig {
 	return TopicConfig{
 		Name:              TopicRawSignals,
-		Partitions:        12,
+		Partitions:        6,
 		ReplicationFactor: 1,
 		RetentionMs:       7 * 24 * 60 * 60 * 1000,
 		Compression:       "lz4",
@@ -37,29 +37,29 @@ func RawSignalsTopic() TopicConfig {
 func EnrichedSignalsTopic() TopicConfig {
 	return TopicConfig{
 		Name:              TopicEnrichedSignals,
-		Partitions:        12,
+		Partitions:        6,
+		ReplicationFactor: 1,
+		RetentionMs:       7 * 24 * 60 * 60 * 1000,
+		Compression:       "lz4",
+	}
+}
+
+func FilteredSignalsTopic() TopicConfig {
+	return TopicConfig{
+		Name:              TopicFilteredSignals,
+		Partitions:        3,
 		ReplicationFactor: 1,
 		RetentionMs:       30 * 24 * 60 * 60 * 1000,
 		Compression:       "lz4",
 	}
 }
 
-func DLQIngestionTopic() TopicConfig {
+func DLQTopic() TopicConfig {
 	return TopicConfig{
-		Name:              TopicDLQIngestion,
-		Partitions:        3,
+		Name:              TopicDLQ,
+		Partitions:        1,
 		ReplicationFactor: 1,
-		RetentionMs:       90 * 24 * 60 * 60 * 1000,
-		Compression:       "gzip",
-	}
-}
-
-func DLQEnrichmentTopic() TopicConfig {
-	return TopicConfig{
-		Name:              TopicDLQEnrichment,
-		Partitions:        3,
-		ReplicationFactor: 1,
-		RetentionMs:       90 * 24 * 60 * 60 * 1000,
+		RetentionMs:       30 * 24 * 60 * 60 * 1000,
 		Compression:       "gzip",
 	}
 }

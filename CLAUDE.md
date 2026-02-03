@@ -396,17 +396,23 @@ L1_TELEGRAM_ENABLED=true
 ### High Priority
 1. **Missing Rate Limiter**: Plan specified `internal/ratelimit/` but not implemented
 2. **Missing Circuit Breaker**: Plan specified `internal/circuit/` but not implemented
-3. **Health Check Stubs**: `KafkaChecker` and `RedisChecker` have TODO comments
 
 ### Medium Priority
-4. **Missing Tests**: Only 5/7 providers have unit tests (missing: binance, fred)
-5. **No Integration Tests**: `test-integration` target exists but no tests written
-6. **Missing Orchestrator**: Plan included `cmd/orchestrator/` for lifecycle management
+3. **No Integration Tests**: `test-integration` target exists but no tests written
+4. **Missing Orchestrator**: Plan included `cmd/orchestrator/` for lifecycle management
+5. **Missing Package Tests**: `internal/config`, `internal/health`, `internal/kafka` lack unit tests
 
 ### Low Priority / Deviations from Plan
-7. **Naming**: Plan used `sensor-*` prefix, implementation uses just provider name
-8. **Directory**: Plan had `internal/providers/` (plural), actual is `internal/provider/<name>/`
-9. **Signals Channel**: Plan used channels, implementation uses callback handlers
+6. **Naming**: Plan used `sensor-*` prefix, implementation uses just provider name
+7. **Directory**: Plan had `internal/providers/` (plural), actual is `internal/provider/<name>/`
+8. **Signals Channel**: Plan used channels, implementation uses callback handlers
+
+### Resolved
+- ✅ All 7 providers now have unit tests (binance, fred added Feb 2025)
+- ✅ GitHub Actions CI added (test, lint, build jobs)
+- ✅ Kafka topic names reconciled to `l1.signals.*` convention
+- ✅ setup.sh updated for Redpanda (was referencing old Zookeeper/Kafka)
+- ✅ Health checkers (`KafkaChecker`, `RedisChecker`) are fully implemented
 
 ---
 

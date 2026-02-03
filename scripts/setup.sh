@@ -103,16 +103,16 @@ start_infra() {
         COMPOSE_CMD="docker-compose"
     fi
     
-    $COMPOSE_CMD up -d zookeeper kafka redis
+    $COMPOSE_CMD up -d redpanda redis
     
-    log_info "Waiting for Kafka to be ready..."
+    log_info "Waiting for Redpanda to be ready..."
     sleep 10
     
     # Initialize topics
-    $COMPOSE_CMD up kafka-init
+    $COMPOSE_CMD up redpanda-init
     
     # Start monitoring
-    $COMPOSE_CMD up -d prometheus grafana kafka-ui
+    $COMPOSE_CMD up -d prometheus grafana
     
     log_success "Infrastructure services started"
 }
@@ -151,11 +151,13 @@ show_status() {
     
     echo ""
     log_info "Access URLs:"
-    echo "  - Kafka UI:    http://localhost:8080"
-    echo "  - Prometheus:  http://localhost:9090"
-    echo "  - Grafana:     http://localhost:3000 (admin/admin)"
-    echo "  - Kafka:       localhost:9093"
-    echo "  - Redis:       localhost:6379"
+    echo "  - Redpanda Console: http://localhost:8080 (if enabled)"
+    echo "  - Prometheus:       http://localhost:9090"
+    echo "  - Grafana:          http://localhost:3000 (admin/admin)"
+    echo "  - Redpanda Kafka:   localhost:9092"
+    echo "  - Redpanda Admin:   localhost:9644"
+    echo "  - Redis:            localhost:6379"
+    echo "  - Persister API:    http://localhost:8088"
 }
 
 # =============================================================================

@@ -665,7 +665,7 @@ L2_LOG_LEVEL=INFO
 
 # L3 Planner
 L3_KAFKA_BROKERS=redpanda:9092
-L3_KAFKA_INPUT_TOPICS=l2.insights,l2.situations
+L3_KAFKA_INPUT_TOPICS=l2.insights,l2.situations,l4.plans
 L3_KAFKA_CONSUMER_GROUP=l3-planner
 L3_OUTPUT_PROPOSALS_TOPIC=l3.proposals
 L3_OUTPUT_ACTIONS_TOPIC=l3.actions
@@ -678,3 +678,186 @@ L3_RATE_LIMIT_TIER1_PER_MINUTE=10
 L3_KILL_SWITCH_ENABLED=true
 L3_LOG_LEVEL=INFO
 ```
+
+---
+
+## Addendum: L4 Paper Trading Integration
+
+L3 serves as the execution layer for L4's paper trading plans. This section specifies the handshake contract.
+
+### Data Flow
+
+```
+L4 (Portfolio Planner)
+        │
+        ▼
+   ┌─────────────┐
+   │  l4.plans   │  Portfolio rebalance targets
+   └──────┬──────┘
+          │
+          ▼
+L3 (Paper Executor)
+        │
+        ├──► l3.proposals (action_type: execute_paper_trade)
+        │
+        ▼
+   ┌─────────────┐
+   │ l3.actions  │  Paper fill results
+   └──────┬──────┘
+          │
+          ▼
+L4 (Evaluator)
+        │
+        ▼
+   ┌────────────────┐
+   │ l4.evaluations │  Performance attribution
+   └────────────────┘
+```
+
+### L3 Paper Trade Proposal Schema
+
+When L3 receives an `l4.plans` message, it converts target weights into order intents:
+
+```json
+{
+  "id": "uuid",
+  "timestamp": "2026-02-03T00:01:00Z",
+  "status": "pending",
+  
+  "trigger": {
+    "type": "l4_plan",
+    "source_id": "plan-uuid",
+    "source_type": "l4.plans"
+  },
+  
+  "action": {
+    "type": "execute_paper_trade",
+    "tier": 1,
+    "target": "paper_executor",
+    "operation": "rebalance",
+    "parameters": {
+      "portfolio_id": "paper-main",
+      "plan_id": "plan-uuid",
+      "orders": [
+        {
+          "asset_id": "binance:BTCUSDT",
+          "side": "buy",
+          "quantity": 0.005,
+          "order_type": "market",
+          "ref_price": 42000.0
+        },
+        {
+          "asset_id": "fred:SP500",
+          "side": "sell",
+          "quantity": 0.10,
+          "order_type": "market",
+          "ref_price": 4800.0
+        }
+      ],
+      "execution_model": {
+        "fee_bps": 10,
+        "slippage_bps": 5,
+        "latency_ms": 250
+      }
+    }
+  },
+  
+  "risk_assessment": {
+    "tier": 1,
+    "reversible": true,
+    "impact_score": 0.2,
+    "confidence": 0.90,
+    "reasoning": "Paper trade, no real capital at risk"
+  },
+  
+  "metadata": {
+    "schema_version": "3.0.0",
+    "correlation_id": "trace-uuid"
+  }
+}
+```
+
+### L3 Paper Trade Action Result Schema
+
+```json
+{
+  "id": "uuid",
+  "proposal_id": "proposal-uuid",
+  "timestamp": "2026-02-03T00:01:05Z",
+  
+  "action": {
+    "type": "execute_paper_trade",
+    "tier": 1,
+    "target": "paper_executor",
+    "operation": "rebalance"
+  },
+  
+  "result": {
+    "status": "success",
+    "output": {
+      "plan_id": "plan-uuid",
+      "portfolio_id": "paper-main",
+      "fills": [
+        {
+          "asset_id": "binance:BTCUSDT",
+          "side": "buy",
+          "quantity": 0.005,
+          "fill_price": 42021.0,
+          "fee": 0.21,
+          "slippage": 0.10,
+          "timestamp": "2026-02-03T00:01:00.250Z"
+        },
+        {
+          "asset_id": "fred:SP500",
+          "side": "sell",
+          "quantity": 0.10,
+          "fill_price": 4800.0,
+          "fee": 0.0,
+          "slippage": 0.0,
+          "timestamp": "2026-02-03T00:01:00Z"
+        }
+      ],
+      "rejected_orders": [],
+      "total_fees": 0.21,
+      "total_slippage": 0.10
+    },
+    "duration_ms": 50
+  },
+  
+  "metadata": {
+    "executed_at": "2026-02-03T00:01:05Z",
+    "executor_version": "1.0.0",
+    "schema_version": "3.0.0",
+    "dry_run": false,
+    "correlation_id": "trace-uuid"
+  }
+}
+```
+
+### Rejection Reasons
+
+When orders cannot be filled, L3 includes reason codes:
+
+| Code | Description |
+|------|-------------|
+| `GUARDRAIL_RATE_LIMIT` | Rate limit exceeded |
+| `GUARDRAIL_KILL_SWITCH` | Kill switch active |
+| `MISSING_PRICE` | No price available for asset |
+| `INSUFFICIENT_CASH` | Not enough cash for buy order |
+| `CONSTRAINT_VIOLATION` | Order would violate portfolio constraints |
+| `DATA_QUALITY` | Price data quality below threshold |
+
+### Traceability
+
+The `correlation_id` must flow through the entire chain:
+
+1. `l4.plans.metadata.correlation_id`
+2. `l3.proposals.metadata.correlation_id`
+3. `l3.actions.metadata.correlation_id`
+4. `l4.evaluations.metadata.correlation_id`
+
+This enables end-to-end tracing from decision to outcome.
+
+### See Also
+
+- [L4 Specification](./L4_SPEC.md) for full paper trading architecture

@@ -1,8 +1,26 @@
 # AGENTS.md - Agent Workflow Guidelines
 
 > **Purpose**: Coordination rules for AI agents working on L1-Ingestion
-> **Last Updated**: 2025-02-02
+> **Last Updated**: 2026-02-03
 > **Module**: l1-ingestion (Go sensors for ACC)
+
+---
+
+## Quick Start for New Agents
+
+Before working on this codebase, read these critical files:
+1. `CLAUDE.md` - Full project documentation and patterns
+2. `internal/provider/provider.go` - Provider interface contract
+3. `internal/signal/signal.go` - Signal schema (DO NOT MODIFY)
+
+### Current System Status
+```
+✅ GDELT    (8081) - Geopolitical events from public file archive
+✅ Binance  (8083) - Crypto large trades via public WebSocket  
+✅ COT      (8085) - Futures positioning from CFTC public files
+⏸️ FRED    (8082) - Needs free API key from fred.stlouisfed.org
+⏸️ Others  - Require paid API keys
+```
 
 ---
 
@@ -274,6 +292,41 @@ func (p *Provider) poll(ctx context.Context) {
 }
 ```
 
+### ❌ DON'T: Use gzip for ZIP files
+```go
+// WRONG - GDELT/COT files are ZIP, not GZIP!
+gzReader, err := gzip.NewReader(resp.Body)
+```
+
+### ✅ DO: Use archive/zip for .zip files
+```go
+body, _ := io.ReadAll(resp.Body)
+zipReader, _ := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+for _, f := range zipReader.File {
+    rc, _ := f.Open()
+    defer rc.Close()
+    // Use rc as reader
+}
+```
+
+### ❌ DON'T: Trust Viper UnmarshalKey with env vars
+```go
+// WRONG - env vars won't be read for nested keys!
+v.AutomaticEnv()
+v.UnmarshalKey("binance", &cfg)
+```
+
+### ✅ DO: Explicitly bind and override
+```go
+v.AutomaticEnv()
+v.BindEnv("binance.threshold", "L1_BINANCE_THRESHOLD")
+v.UnmarshalKey("binance", &cfg)
+// Manual override
+if v.IsSet("binance.threshold") {
+    cfg.Threshold = v.GetFloat64("binance.threshold")
+}
+```
+
 ### ❌ DON'T: Block in signal handler
 ```go
 provider.Subscribe(func(ctx context.Context, sig signal.Signal) error {
@@ -318,6 +371,34 @@ func (p *Provider) pollLoop(ctx context.Context) {
     }
 }
 ```
+
+---
+
+## Data Source Specifics
+
+### GDELT
+- **URL**: `http://data.gdeltproject.org/gdeltv2/YYYYMMDDHHMMSS.gkg.csv.zip`
+- **Format**: ZIP archive containing CSV
+- **Frequency**: Files published every 15 minutes
+- **Auth**: None (public)
+
+### Binance
+- **URL**: `wss://stream.binance.com:9443/stream`
+- **Format**: WebSocket JSON streams
+- **Auth**: None for public market data (only needed for account APIs)
+- **Streams**: `{symbol}@trade`, `{symbol}@ticker`
+
+### CME COT (CFTC)
+- **URL**: `https://www.cftc.gov/files/dea/history/deacot{YYYY}.zip`
+- **Format**: ZIP archive containing TXT (CSV format)
+- **Frequency**: Weekly (Friday release), annual files
+- **Auth**: None (public government data)
+- **Fallback**: Try current year, then previous year
+
+### FRED
+- **URL**: `https://api.stlouisfed.org/fred/series/observations`
+- **Format**: JSON API
+- **Auth**: Required (free key from fred.stlouisfed.org)
 
 ---
 

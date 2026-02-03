@@ -1,36 +1,38 @@
 # CLAUDE.md - L1 Ingestion Module
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
-> **Last Updated**: 2025-02-02
-> **Status**: Wave 3 Complete (All 7 Providers)
+> **Last Updated**: 2026-02-03
+> **Status**: Wave 3.5 Complete (Containerization + All Free Providers Working)
 
 ---
 
 ## Project Overview
 
-**L1-Ingestion** is a Go-based real-time signal ingestion layer for the ACC (Autonomous Cognitive Core) system. It collects geopolitical, macroeconomic, and crypto signals from multiple data sources and publishes them to Kafka for downstream processing.
+**L1-Ingestion** is a Go-based real-time signal ingestion layer for the ACC (Autonomous Cognitive Core) system. It collects geopolitical, macroeconomic, and crypto signals from multiple data sources and publishes them to Redpanda (Kafka-compatible) for downstream processing.
 
 ### Tech Stack
 | Component | Technology |
 |-----------|------------|
 | Language | Go 1.21+ |
-| Message Broker | Apache Kafka (segmentio/kafka-go) |
+| Message Broker | Redpanda (Kafka-compatible, single binary) |
+| Kafka Client | segmentio/kafka-go |
 | Logging | Uber Zap |
 | Config | Viper (env vars with `L1_` prefix) |
 | HTTP | net/http (stdlib) |
 | UUID | google/uuid |
 | Metrics | Prometheus (promhttp) |
+| Container | Docker with multi-stage builds |
 
 ### Data Sources (7 Providers)
-| Provider | Category | Port | Status |
-|----------|----------|------|--------|
-| GDELT | Geopolitical | 8081 | ✅ |
-| FRED | Macro | 8082 | ✅ |
-| Binance | Crypto | 8083 | ✅ |
-| Whale Alert | Crypto | 8084 | ✅ |
-| CME COT | Macro | 8085 | ✅ |
-| Trading Economics | Macro | 8086 | ✅ |
-| Telegram | Geopolitical | 8087 | ✅ |
+| Provider | Category | Port | API Key Required | Status |
+|----------|----------|------|------------------|--------|
+| GDELT | Geopolitical | 8081 | ❌ No (public files) | ✅ Running |
+| FRED | Macro | 8082 | ✅ Yes (free) | ⏸️ Needs key |
+| Binance | Crypto | 8083 | ❌ No (public WebSocket) | ✅ Running |
+| Whale Alert | Crypto | 8084 | ✅ Yes (paid) | ⏸️ Deferred |
+| CME COT | Macro | 8085 | ❌ No (public files) | ✅ Running |
+| Trading Economics | Macro | 8086 | ✅ Yes (paid) | ⏸️ Deferred |
+| Telegram | Geopolitical | 8087 | ✅ Yes (bot token) | ⏸️ Deferred |
 
 ---
 
@@ -74,7 +76,13 @@ l1-ingestion/
 │   └── health/             # HTTP health server
 │       └── server.go       # /health, /ready, /metrics endpoints
 ├── deploy/
-│   └── docker-compose.yml  # Kafka, Zookeeper, Redis, Prometheus, Grafana
+│   ├── docker-compose.yml  # Redpanda, providers, Prometheus, Grafana
+│   ├── docker/
+│   │   └── Dockerfile.provider  # Multi-stage Go build
+│   ├── prometheus/
+│   │   └── prometheus.yml
+│   └── grafana/
+│       └── provisioning/
 ├── docs/
 │   └── ACC-L1-MVP-ARCHITECTURE-PLAN.md
 ├── bin/                    # Compiled binaries (gitignored)
@@ -486,6 +494,91 @@ func (p *Provider) Stop() error {
 
 ## Common Pitfalls
 
+### Critical: Viper Environment Variable Binding
+
+**Problem**: Viper's `UnmarshalKey()` does NOT automatically read environment variables for nested config keys, even with `AutomaticEnv()` enabled.
+
+**Wrong** (env vars ignored):
+```go
+v.SetEnvPrefix("L1")
+v.AutomaticEnv()
+var cfg BinanceConfig
+v.UnmarshalKey("binance", &cfg)  // L1_BINANCE_PAIRS won't be read!
+```
+
+**Correct** (explicit binding + manual override):
+```go
+v.SetEnvPrefix("L1")
+v.AutomaticEnv()
+
+// Explicit bindings for nested keys
+v.BindEnv("binance.pairs", "L1_BINANCE_PAIRS")
+v.BindEnv("binance.large_trade_threshold_usd", "L1_BINANCE_LARGE_TRADE_THRESHOLD_USD")
+
+var cfg BinanceConfig
+v.UnmarshalKey("binance", &cfg)
+
+// Manual override using Get* methods
+if v.IsSet("binance.pairs") {
+    cfg.Pairs = v.GetStringSlice("binance.pairs")
+}
+if v.IsSet("binance.large_trade_threshold_usd") {
+    cfg.LargeTradeThresholdUSD = v.GetFloat64("binance.large_trade_threshold_usd")
+}
+```
+
+### Critical: Comma-Separated Env Vars
+
+**Problem**: Viper's `GetStringSlice()` returns `["a,b,c"]` (single element) instead of `["a", "b", "c"]` for comma-separated env vars.
+
+**Solution**: Check and split manually:
+```go
+if pairs := v.GetStringSlice("binance.pairs"); len(pairs) > 0 {
+    if len(pairs) == 1 && strings.Contains(pairs[0], ",") {
+        cfg.Pairs = strings.Split(pairs[0], ",")
+    } else {
+        cfg.Pairs = pairs
+    }
+}
+```
+
+### Critical: ZIP vs GZIP Decompression
+
+**Problem**: Many government/data sources use `.zip` archives, NOT `.gz` gzip files. Using `compress/gzip` on ZIP files produces "invalid header" errors.
+
+| File Extension | Correct Package |
+|----------------|-----------------|
+| `.gz` | `compress/gzip` |
+| `.zip` | `archive/zip` |
+
+**ZIP decompression pattern**:
+```go
+import (
+    "archive/zip"
+    "bytes"
+    "io"
+)
+
+body, _ := io.ReadAll(resp.Body)
+zipReader, _ := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+
+for _, f := range zipReader.File {
+    if strings.HasSuffix(f.Name, ".csv") {
+        rc, _ := f.Open()
+        defer rc.Close()
+        // Parse rc as CSV reader
+    }
+}
+```
+
+### Provider-Specific Data Source Notes
+
+| Provider | Data Format | URL Pattern | Notes |
+|----------|-------------|-------------|-------|
+| GDELT | ZIP → CSV | `data.gdeltproject.org/gdeltv2/YYYYMMDDHHMMSS.gkg.csv.zip` | Files every 15 min |
+| COT | ZIP → TXT/CSV | `cftc.gov/files/dea/history/deacot{YYYY}.zip` | Annual files, try current year then previous |
+| Binance | WebSocket JSON | `wss://stream.binance.com:9443/stream` | Public market data, no auth needed |
+
 1. **Forgetting `MarkStarted()`**: Health uptime will be zero
 2. **Not calling `RecordSuccess()`/`RecordError()`**: Health status won't update
 3. **Blocking in signal handlers**: Use goroutines for slow operations
@@ -500,3 +593,41 @@ func (p *Provider) Stop() error {
 - **Wave 5**: Snowflake Integration (Kafka Connector + dbt models)
 - **Wave 6**: Grafana dashboards, Prometheus alerting
 - **Wave 7**: Kubernetes manifests, CI/CD pipeline
+
+---
+
+## Docker Commands Reference
+
+```bash
+# Start full stack
+cd deploy && docker compose up -d
+
+# Rebuild specific provider
+docker compose build binance --no-cache && docker compose up -d binance
+
+# View logs
+docker compose logs -f binance
+docker compose logs gdelt --tail 50
+
+# Check health
+curl http://localhost:8083/health
+
+# Redpanda commands
+docker exec l1-redpanda rpk topic list --brokers localhost:9092
+docker exec l1-redpanda rpk topic consume l1.signals.raw --brokers localhost:9092 --num 5
+docker exec l1-redpanda rpk topic describe l1.signals.raw --brokers localhost:9092
+
+# Prometheus targets
+curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[].health'
+```
+
+---
+
+## Kafka Topics
+
+| Topic | Partitions | Purpose |
+|-------|------------|---------|
+| `l1.signals.raw` | 6 | Raw signals from providers |
+| `l1.signals.enriched` | 6 | SLM-enriched signals |
+| `l1.signals.filtered` | 3 | High-priority filtered signals |
+| `l1.signals.dlq` | 1 | Dead letter queue |

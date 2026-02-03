@@ -18,11 +18,16 @@ Before working on this codebase, read these critical files:
 ✅ GDELT      (8081) - Geopolitical events from public file archive
 ✅ Binance    (8083) - Crypto large trades via public WebSocket  
 ✅ COT        (8085) - Futures positioning from CFTC public files
+✅ FRED       (8086) - Economic indicators (needs free API key)
+✅ Telegram   (8087) - Channel/group message ingestion
 ✅ SLM Worker        - Signal enrichment via Qwen 2.5-1.5B-Instruct
 ✅ Alerter           - Telegram notifications for high-priority signals
 ✅ Persister  (8088) - SQLite storage with Query API
-⏸️ FRED      (8082) - Needs free API key from fred.stlouisfed.org
-⏸️ Others           - Require paid API keys
+⏸️ Whale Alert      - Requires paid API key
+⏸️ TradingEcon      - Requires paid API key
+📋 L2 Reasoner      - Specified (docs/L2_L3_SPEC.md)
+📋 L3 Planner       - Specified (docs/L2_L3_SPEC.md)
+📋 L4 Paper Trading - Specified (docs/L4_SPEC.md)
 ```
 
 ---
@@ -435,7 +440,7 @@ func (p *Provider) pollLoop(ctx context.Context) {
 
 ### Signal Pipeline (Current)
 ```
-Go Providers (GDELT, Binance, COT)
+Go Providers (GDELT, Binance, COT, FRED, Telegram)
     │
     ▼
 l1.signals.raw (Kafka topic)
@@ -446,14 +451,33 @@ SLM Worker (Python - Qwen 2.5-1.5B)
     ▼
 l1.signals.enriched (Kafka topic)
     │
-    ├──────────────────────┐
-    ▼                      ▼
-Alerter                 Persister
-(Telegram)              (SQLite)
-    │                      │
-    ▼                      ▼
-📱 User's Phone        💾 Query API (:8088)
+    ├──────────────────────┬────────────────────┐
+    ▼                      ▼                    ▼
+Alerter                 Persister           L2 Reasoner (future)
+(Telegram)              (SQLite)                │
+    │                      │                    ▼
+    ▼                      ▼              l2.insights, l2.situations
+📱 User's Phone        💾 Query API (:8088)     │
+                                                ▼
+                                          L4 Paper Trading (future)
+                                                │
+                                                ▼
+                                          l4.plans → L3 Executor
+                                                │
+                                                ▼
+                                          l3.actions → L4 Evaluation
 ```
+
+### Future Pipeline: L2 → L4 → L3 Loop
+
+The full ACC architecture includes higher layers (specs in `docs/`):
+
+| Layer | Purpose | Status |
+|-------|---------|--------|
+| L1 | Signal Ingestion | ✅ Implemented |
+| L2 | Reasoning (correlations, entities, situations) | 📋 Specified |
+| L3 | Decision/Execution (guardrails, paper executor, audit) | 📋 Specified |
+| L4 | Paper Trading + Strategy Allocation (All-Weather) | 📋 Specified |
 
 ### Sensor-Dev → Processor-Dev
 - **Contract**: Signals published to `l1.signals.raw` topic

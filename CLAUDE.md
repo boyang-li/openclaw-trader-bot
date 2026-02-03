@@ -134,7 +134,9 @@ l1-ingestion/
 │   │           └── datasources.yml
 │   └── .env                # Environment variables (gitignored)
 ├── docs/
-│   └── ACC-L1-MVP-ARCHITECTURE-PLAN.md
+│   ├── ACC-L1-MVP-ARCHITECTURE-PLAN.md
+│   ├── L2_L3_SPEC.md             # L2 Reasoning + L3 Decision specs
+│   └── L4_SPEC.md                # L4 Paper Trading + Strategy Allocation
 ├── bin/                    # Compiled binaries (gitignored)
 ├── Makefile               # Build automation
 ├── go.mod / go.sum
@@ -715,6 +717,42 @@ for _, f := range zipReader.File {
 
 ---
 
+## L2/L3/L4 Architecture Reference
+
+The L1 ingestion layer feeds into higher layers of the ACC system. Specifications exist for:
+
+### L2: Reasoning Layer
+- **Purpose**: Correlation detection, entity tracking, situation rollups
+- **Inputs**: `l1.signals.enriched`
+- **Outputs**: `l2.insights`, `l2.situations`, `l2.entities`
+- **Spec**: `docs/L2_L3_SPEC.md`
+
+### L3: Decision/Execution Layer
+- **Purpose**: Action proposals, guardrails, paper execution, audit trail
+- **Inputs**: `l2.insights`, `l2.situations`, `l4.plans`
+- **Outputs**: `l3.proposals`, `l3.actions`, `l3.audit`
+- **Paper Trading**: Executes L4 rebalance plans with fee/slippage simulation
+- **Spec**: `docs/L2_L3_SPEC.md`
+
+### L4: Paper Trading + Strategy Allocation
+- **Purpose**: Portfolio management, All-Weather risk parity, contextual bandit learning
+- **Inputs**: `l1.signals.enriched`, `l2.situations`, `l3.actions`
+- **Outputs**: `l4.plans`, `l4.portfolio.snapshots`, `l4.evaluations`, `l4.bandit.state`
+- **Assets**: Binance tradables + FRED-priced synthetics (SP500, bonds, gold, oil)
+- **Learning**: Conservative contextual bandit allocates between known strategies
+- **Spec**: `docs/L4_SPEC.md`
+
+### Full Pipeline
+```
+L1 (Ingestion) → L2 (Reasoning) → L4 (Portfolio) → L3 (Execution) → L4 (Evaluation)
+     │                │                │                │
+     ▼                ▼                ▼                ▼
+ l1.signals.raw  l2.insights      l4.plans        l3.actions
+ l1.signals.enriched  l2.situations              l4.evaluations
+```
+
+---
+
 ## Docker Commands Reference
 
 ```bash
@@ -768,3 +806,18 @@ open http://localhost:3000  # Login: admin/admin
 | `l1.signals.enriched` | 6 | SLM-enriched signals |
 | `l1.signals.filtered` | 3 | High-priority filtered signals |
 | `l1.signals.dlq` | 1 | Dead letter queue |
+
+### L2/L3/L4 Topics (Defined in Specs)
+
+| Topic | Partitions | Purpose |
+|-------|------------|---------|
+| `l2.insights` | 6 | Correlation/anomaly detections |
+| `l2.situations` | 3 | Stateful situation rollups |
+| `l2.entities` | 6 | Entity state tracking |
+| `l3.proposals` | 3 | Action proposals |
+| `l3.actions` | 3 | Executed action results |
+| `l3.audit` | 1 | Complete audit trail |
+| `l4.plans` | 3 | Portfolio rebalance plans |
+| `l4.portfolio.snapshots` | 3 | Portfolio state |
+| `l4.evaluations` | 3 | Performance attribution |
+| `l4.bandit.state` | 1 | Learner state (compacted) |

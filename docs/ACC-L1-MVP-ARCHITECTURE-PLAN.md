@@ -163,7 +163,9 @@ l1-ingestion/
 │   └── health-check.sh           # System health check
 │
 ├── docs/
-│   └── ACC-L1-MVP-ARCHITECTURE-PLAN.md
+│   ├── ACC-L1-MVP-ARCHITECTURE-PLAN.md
+│   ├── L2_L3_SPEC.md              # L2 Reasoning + L3 Decision specs
+│   └── L4_SPEC.md                 # L4 Paper Trading + Strategy Allocation
 │
 ├── CLAUDE.md                      # AI assistant memory
 ├── AGENTS.md                      # Agent workflow guidelines
@@ -189,8 +191,25 @@ l1-ingestion/
 | Wave 4.5 | Telegram Alerter (real-time notifications) | ✅ COMPLETE |
 | Wave 5 | Persistence Layer (SQLite storage + Query API) | ✅ COMPLETE |
 | Wave 6 | Observability (Grafana dashboards) | ✅ COMPLETE |
-| Wave 7 | Paid Providers (Whale Alert, Trading Economics) | ⏸️ DEFERRED |
-| Wave 8 | Snowflake Integration | ⏸️ DEFERRED |
+| Wave 7 | FRED Provider | ✅ COMPLETE |
+| Wave 7.5 | Telegram Ingestor | ✅ COMPLETE |
+| Wave 8 | Paid Providers (Whale Alert, Trading Economics) | ⏸️ DEFERRED |
+| Wave 9 | Snowflake Integration | ⏸️ DEFERRED |
+
+### Higher Layers (Specified, Not Implemented)
+
+| Layer | Specification | Status |
+|-------|---------------|--------|
+| L2 Reasoning | `docs/L2_L3_SPEC.md` | 📋 Specified |
+| L3 Decision/Execution | `docs/L2_L3_SPEC.md` | 📋 Specified |
+| L4 Paper Trading | `docs/L4_SPEC.md` | 📋 Specified |
+
+**L4 Highlights:**
+- All-Weather risk parity as seed strategy
+- Multi-asset: Binance tradables + FRED-priced synthetics (SP500, bonds, gold, oil)
+- Conservative contextual bandit for strategy allocation
+- Clean attribution: signal vs sizing vs execution
+- Paper trading only (no real execution)
 
 ---
 
@@ -725,6 +744,14 @@ CREATE TABLE processed_ids (
 5. ✅ Telegram alerts arriving for high-urgency signals — **DONE** (Live on user's phone!)
 6. ✅ Grafana dashboard showing system health — **DONE** (3 dashboards: Overview, Redpanda, Providers)
 7. ⏳ System runs 24/7 for 1 week without manual intervention — **IN PROGRESS**
+
+### L1 MVP Complete — Next: L2/L3/L4 Implementation
+
+With L1 ingestion operational, the next phase is implementing higher layers:
+
+1. **L2 Reasoning** (`docs/L2_L3_SPEC.md`): Correlations, entity tracking, situation rollups
+2. **L3 Decision** (`docs/L2_L3_SPEC.md`): Guardrails, paper executor, audit trail
+3. **L4 Paper Trading** (`docs/L4_SPEC.md`): All-Weather risk parity, contextual bandit
 
 ---
 

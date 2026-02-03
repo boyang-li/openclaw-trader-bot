@@ -85,6 +85,16 @@ scrape_configs:
     metrics_path: '/metrics'
     scrape_interval: 10s
 
+  - job_name: 'l1-telegram'
+    static_configs:
+      - targets: ['telegram-ingestor:8080']
+        labels:
+          service: 'telegram'
+          category: 'geopolitical'
+          provider: 'telegram'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
   # ===========================================================================
   # Python Services (future)
   # ===========================================================================

@@ -120,6 +120,12 @@ class TelegramNotifier(Notifier):
                 lines.extend(["", "<b>Trade Details:</b>"])
                 lines.extend(trade_lines)
         
+        if raw_data and msg["source"].lower() == "fred":
+            econ_lines = self._format_fred_economic_details(raw_data)
+            if econ_lines:
+                lines.extend(["", "<b>Economic Data:</b>"])
+                lines.extend(econ_lines)
+        
         if msg["summary"]:
             lines.extend(["", f"<b>Summary:</b> {msg['summary'][:500]}"])
         
@@ -156,6 +162,32 @@ class TelegramNotifier(Notifier):
             change = raw_data["change_24h_pct"]
             change_emoji = "📈" if change > 0 else "📉"
             lines.append(f"  {change_emoji} <b>24h Change:</b> {change:+.2f}%")
+        
+        return lines
+
+    def _format_fred_economic_details(self, raw_data: dict[str, Any]) -> list[str]:
+        lines = []
+        
+        if "series_title" in raw_data:
+            lines.append(f"  📊 <b>Indicator:</b> {raw_data['series_title']}")
+        
+        if "value" in raw_data:
+            value = raw_data["value"]
+            if "previous" in raw_data and raw_data.get("has_previous"):
+                prev = raw_data["previous"]
+                if prev != 0:
+                    change_pct = ((value - prev) / abs(prev)) * 100
+                    change_emoji = "📈" if change_pct > 0 else "📉" if change_pct < 0 else "➖"
+                    lines.append(f"  📈 <b>Current:</b> {value:,.2f}")
+                    lines.append(f"  📉 <b>Previous:</b> {prev:,.2f}")
+                    lines.append(f"  {change_emoji} <b>Change:</b> {change_pct:+.2f}%")
+                else:
+                    lines.append(f"  📈 <b>Current:</b> {value:,.2f}")
+            else:
+                lines.append(f"  📈 <b>Value:</b> {value:,.2f}")
+        
+        if "date" in raw_data:
+            lines.append(f"  📅 <b>Release Date:</b> {raw_data['date']}")
         
         return lines
 
@@ -217,6 +249,11 @@ class DiscordNotifier(Notifier):
             if trade_details:
                 fields.append({"name": "Trade Details", "value": trade_details, "inline": False})
         
+        if raw_data and msg["source"].lower() == "fred":
+            econ_details = self._format_fred_economic_for_discord(raw_data)
+            if econ_details:
+                fields.append({"name": "Economic Data", "value": econ_details, "inline": False})
+        
         fields.append({"name": "Alert Triggers", "value": ", ".join(msg["reasons"]), "inline": False})
         
         if msg["summary"]:
@@ -251,6 +288,30 @@ class DiscordNotifier(Notifier):
             change = raw_data["change_24h_pct"]
             emoji = "📈" if change > 0 else "📉"
             parts.append(f"{emoji} **24h:** {change:+.2f}%")
+        
+        return " | ".join(parts) if parts else ""
+
+    def _format_fred_economic_for_discord(self, raw_data: dict[str, Any]) -> str:
+        parts = []
+        
+        if "series_title" in raw_data:
+            parts.append(f"📊 **{raw_data['series_title']}**")
+        
+        if "value" in raw_data:
+            value = raw_data["value"]
+            if "previous" in raw_data and raw_data.get("has_previous"):
+                prev = raw_data["previous"]
+                if prev != 0:
+                    change_pct = ((value - prev) / abs(prev)) * 100
+                    emoji = "📈" if change_pct > 0 else "📉" if change_pct < 0 else "➖"
+                    parts.append(f"{emoji} {value:,.2f} (prev: {prev:,.2f}, {change_pct:+.2f}%)")
+                else:
+                    parts.append(f"📈 {value:,.2f}")
+            else:
+                parts.append(f"📈 **Value:** {value:,.2f}")
+        
+        if "date" in raw_data:
+            parts.append(f"📅 {raw_data['date']}")
         
         return " | ".join(parts) if parts else ""
 

@@ -2,7 +2,7 @@
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
 > **Last Updated**: 2026-02-03
-> **Status**: Wave 6 Complete (Observability Dashboards Running)
+> **Status**: Wave 7 Complete (FRED Provider Running)
 
 ---
 
@@ -30,12 +30,12 @@
 | Provider | Category | Port | API Key Required | Status |
 |----------|----------|------|------------------|--------|
 | GDELT | Geopolitical | 8081 | ❌ No (public files) | ✅ Running |
-| FRED | Macro | 8082 | ✅ Yes (free) | ⏸️ Needs key |
+| FRED | Macro | 8086 | ✅ Yes (free) | ✅ Running |
 | Binance | Crypto | 8083 | ❌ No (public WebSocket) | ✅ Running |
 | Whale Alert | Crypto | 8084 | ✅ Yes (paid) | ⏸️ Deferred |
 | CME COT | Macro | 8085 | ❌ No (public files) | ✅ Running |
-| Trading Economics | Macro | 8086 | ✅ Yes (paid) | ⏸️ Deferred |
-| Telegram | Geopolitical | 8087 | ✅ Yes (bot token) | ⏸️ Deferred |
+| Trading Economics | Macro | 8087 | ✅ Yes (paid) | ⏸️ Deferred |
+| Telegram | Geopolitical | 8089 | ✅ Yes (bot token) | ⏸️ Deferred |
 
 ### Python Processing Services
 | Service | Description | Status |
@@ -672,10 +672,25 @@ for _, f := range zipReader.File {
 - Access: http://localhost:3000 (admin/admin)
 - Location: `deploy/grafana/dashboards/`
 
-## Future Work (Wave 7+)
+### Wave 7: FRED Provider ✅
+- **Federal Reserve Economic Data** provider now running
+- Polls 8 key economic indicators every hour:
+  - DFF: Federal Funds Effective Rate
+  - T10Y2Y: 10-Year Treasury Minus 2-Year (yield curve)
+  - UNRATE: Unemployment Rate
+  - CPIAUCSL: Consumer Price Index (CPI)
+  - GDP: Gross Domestic Product
+  - MORTGAGE30US: 30-Year Fixed Rate Mortgage
+  - DTWEXBGS: Trade Weighted Dollar Index
+  - VIXCLS: CBOE Volatility Index (VIX)
+- Sentiment calculation based on economic implications (e.g., inverted yield curve = negative)
+- Alerter enhanced with FRED-specific formatting showing indicator values and changes
+- Port: 8086 | API Key: Free (get from https://fred.stlouisfed.org/docs/api/api_key.html)
 
-- **Wave 7**: Paid providers (Whale Alert, Trading Economics) when needed
-- **Wave 8**: Kubernetes manifests, CI/CD pipeline
+## Future Work (Wave 8+)
+
+- **Wave 8**: Paid providers (Whale Alert, Trading Economics) when needed
+- **Wave 9**: Kubernetes manifests, CI/CD pipeline
 
 ---
 

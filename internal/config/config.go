@@ -290,9 +290,29 @@ func LoadFREDConfig() (*FREDConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// Explicit bindings for nested keys (Viper quirk: UnmarshalKey doesn't see AutomaticEnv)
+	_ = v.BindEnv("fred.api_key", "L1_FRED_API_KEY")
+	_ = v.BindEnv("fred.poll_interval", "L1_FRED_POLL_INTERVAL")
+	_ = v.BindEnv("fred.enabled", "L1_FRED_ENABLED")
+	_ = v.BindEnv("fred.base_url", "L1_FRED_BASE_URL")
+
 	var cfg FREDConfig
 	if err := v.UnmarshalKey("fred", &cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling FRED config: %w", err)
+	}
+
+	// Manual override: Viper's UnmarshalKey doesn't properly read bound env vars
+	if v.IsSet("fred.api_key") {
+		cfg.APIKey = v.GetString("fred.api_key")
+	}
+	if v.IsSet("fred.poll_interval") {
+		cfg.PollInterval = v.GetDuration("fred.poll_interval")
+	}
+	if v.IsSet("fred.enabled") {
+		cfg.Enabled = v.GetBool("fred.enabled")
+	}
+	if v.IsSet("fred.base_url") {
+		cfg.BaseURL = v.GetString("fred.base_url")
 	}
 
 	if cfg.APIKey == "" {

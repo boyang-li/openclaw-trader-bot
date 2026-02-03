@@ -128,7 +128,7 @@ services:
       - L1_FRED_POLL_INTERVAL=${FRED_POLL_INTERVAL:-1h}
       - L1_LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
-      - "8082:8080"
+      - "8086:8080"
     restart: unless-stopped
     networks:
       - l1-network

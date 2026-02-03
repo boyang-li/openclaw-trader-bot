@@ -3,8 +3,9 @@
 package gdelt
 
 import (
+	"archive/zip"
 	"bufio"
-	"compress/gzip"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -87,7 +88,7 @@ func New(cfg Config, logger *zap.Logger) *Provider {
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		lastProcessed: time.Now().Add(-cfg.PollInterval), // Start from one interval ago
+		lastProcessed: time.Time{},
 	}
 }
 
@@ -229,14 +230,27 @@ func (p *Provider) fetchAndParseGKG(ctx context.Context, fileTime time.Time) ([]
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
-	// Decompress gzip
-	gzReader, err := gzip.NewReader(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("decompress: %w", err)
+		return nil, fmt.Errorf("read response: %w", err)
 	}
-	defer gzReader.Close()
 
-	return p.parseGKG(gzReader, fileTime)
+	zipReader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return nil, fmt.Errorf("open zip: %w", err)
+	}
+
+	if len(zipReader.File) == 0 {
+		return nil, fmt.Errorf("empty zip archive")
+	}
+
+	csvFile, err := zipReader.File[0].Open()
+	if err != nil {
+		return nil, fmt.Errorf("open csv in zip: %w", err)
+	}
+	defer csvFile.Close()
+
+	return p.parseGKG(csvFile, fileTime)
 }
 
 // parseGKG parses GKG CSV data into signals.

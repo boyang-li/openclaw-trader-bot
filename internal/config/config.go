@@ -259,9 +259,29 @@ func LoadGDELTConfig() (*GDELTConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// Explicit bindings for nested keys (Viper quirk: UnmarshalKey doesn't see AutomaticEnv)
+	_ = v.BindEnv("gdelt.poll_interval", "L1_GDELT_POLL_INTERVAL")
+	_ = v.BindEnv("gdelt.batch_size", "L1_GDELT_BATCH_SIZE")
+	_ = v.BindEnv("gdelt.enabled", "L1_GDELT_ENABLED")
+	_ = v.BindEnv("gdelt.base_url", "L1_GDELT_BASE_URL")
+
 	var cfg GDELTConfig
 	if err := v.UnmarshalKey("gdelt", &cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling GDELT config: %w", err)
+	}
+
+	// Manual override: Viper's UnmarshalKey doesn't properly read bound env vars
+	if v.IsSet("gdelt.poll_interval") {
+		cfg.PollInterval = v.GetDuration("gdelt.poll_interval")
+	}
+	if v.IsSet("gdelt.batch_size") {
+		cfg.BatchSize = v.GetInt("gdelt.batch_size")
+	}
+	if v.IsSet("gdelt.enabled") {
+		cfg.Enabled = v.GetBool("gdelt.enabled")
+	}
+	if v.IsSet("gdelt.base_url") {
+		cfg.BaseURL = v.GetString("gdelt.base_url")
 	}
 
 	return &cfg, nil
@@ -377,7 +397,6 @@ func LoadBinanceConfig() (*BinanceConfig, error) {
 func LoadWhaleAlertConfig() (*WhaleAlertConfig, error) {
 	v := viper.New()
 
-	// Set defaults
 	v.SetDefault("whalealert.enabled", true)
 	v.SetDefault("whalealert.poll_interval", "1m")
 	v.SetDefault("whalealert.min_value_usd", 1000000)
@@ -385,14 +404,55 @@ func LoadWhaleAlertConfig() (*WhaleAlertConfig, error) {
 	v.SetDefault("whalealert.blockchains", []string{})
 	v.SetDefault("whalealert.transaction_types", []string{})
 
-	// Environment variables
 	v.SetEnvPrefix("L1")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	_ = v.BindEnv("whalealert.api_key", "L1_WHALEALERT_API_KEY")
+	_ = v.BindEnv("whalealert.enabled", "L1_WHALEALERT_ENABLED")
+	_ = v.BindEnv("whalealert.poll_interval", "L1_WHALEALERT_POLL_INTERVAL")
+	_ = v.BindEnv("whalealert.min_value_usd", "L1_WHALEALERT_MIN_VALUE_USD")
+	_ = v.BindEnv("whalealert.base_url", "L1_WHALEALERT_BASE_URL")
+	_ = v.BindEnv("whalealert.blockchains", "L1_WHALEALERT_BLOCKCHAINS")
+	_ = v.BindEnv("whalealert.transaction_types", "L1_WHALEALERT_TRANSACTION_TYPES")
+
 	var cfg WhaleAlertConfig
 	if err := v.UnmarshalKey("whalealert", &cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling Whale Alert config: %w", err)
+	}
+
+	if v.IsSet("whalealert.api_key") {
+		cfg.APIKey = v.GetString("whalealert.api_key")
+	}
+	if v.IsSet("whalealert.enabled") {
+		cfg.Enabled = v.GetBool("whalealert.enabled")
+	}
+	if v.IsSet("whalealert.poll_interval") {
+		cfg.PollInterval = v.GetDuration("whalealert.poll_interval")
+	}
+	if v.IsSet("whalealert.min_value_usd") {
+		cfg.MinValueUSD = v.GetInt64("whalealert.min_value_usd")
+	}
+	if v.IsSet("whalealert.base_url") {
+		cfg.BaseURL = v.GetString("whalealert.base_url")
+	}
+	if v.IsSet("whalealert.blockchains") {
+		if chains := v.GetStringSlice("whalealert.blockchains"); len(chains) > 0 {
+			if len(chains) == 1 && strings.Contains(chains[0], ",") {
+				cfg.Blockchains = strings.Split(chains[0], ",")
+			} else {
+				cfg.Blockchains = chains
+			}
+		}
+	}
+	if v.IsSet("whalealert.transaction_types") {
+		if types := v.GetStringSlice("whalealert.transaction_types"); len(types) > 0 {
+			if len(types) == 1 && strings.Contains(types[0], ",") {
+				cfg.TransactionTypes = strings.Split(types[0], ",")
+			} else {
+				cfg.TransactionTypes = types
+			}
+		}
 	}
 
 	if cfg.APIKey == "" {
@@ -422,9 +482,33 @@ func LoadCOTConfig() (*COTConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	_ = v.BindEnv("cot.enabled", "L1_COT_ENABLED")
+	_ = v.BindEnv("cot.poll_interval", "L1_COT_POLL_INTERVAL")
+	_ = v.BindEnv("cot.base_url", "L1_COT_BASE_URL")
+	_ = v.BindEnv("cot.contracts", "L1_COT_CONTRACTS")
+
 	var cfg COTConfig
 	if err := v.UnmarshalKey("cot", &cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling COT config: %w", err)
+	}
+
+	if v.IsSet("cot.enabled") {
+		cfg.Enabled = v.GetBool("cot.enabled")
+	}
+	if v.IsSet("cot.poll_interval") {
+		cfg.PollInterval = v.GetDuration("cot.poll_interval")
+	}
+	if v.IsSet("cot.base_url") {
+		cfg.BaseURL = v.GetString("cot.base_url")
+	}
+	if v.IsSet("cot.contracts") {
+		if contracts := v.GetStringSlice("cot.contracts"); len(contracts) > 0 {
+			if len(contracts) == 1 && strings.Contains(contracts[0], ",") {
+				cfg.Contracts = strings.Split(contracts[0], ",")
+			} else {
+				cfg.Contracts = contracts
+			}
+		}
 	}
 
 	return &cfg, nil
@@ -450,9 +534,47 @@ func LoadTradingEconomicsConfig() (*TradingEconomicsConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	_ = v.BindEnv("tradingeconomics.api_key", "L1_TRADINGECONOMICS_API_KEY")
+	_ = v.BindEnv("tradingeconomics.enabled", "L1_TRADINGECONOMICS_ENABLED")
+	_ = v.BindEnv("tradingeconomics.poll_interval", "L1_TRADINGECONOMICS_POLL_INTERVAL")
+	_ = v.BindEnv("tradingeconomics.base_url", "L1_TRADINGECONOMICS_BASE_URL")
+	_ = v.BindEnv("tradingeconomics.countries", "L1_TRADINGECONOMICS_COUNTRIES")
+	_ = v.BindEnv("tradingeconomics.indicators", "L1_TRADINGECONOMICS_INDICATORS")
+
 	var cfg TradingEconomicsConfig
 	if err := v.UnmarshalKey("tradingeconomics", &cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling Trading Economics config: %w", err)
+	}
+
+	if v.IsSet("tradingeconomics.api_key") {
+		cfg.APIKey = v.GetString("tradingeconomics.api_key")
+	}
+	if v.IsSet("tradingeconomics.enabled") {
+		cfg.Enabled = v.GetBool("tradingeconomics.enabled")
+	}
+	if v.IsSet("tradingeconomics.poll_interval") {
+		cfg.PollInterval = v.GetDuration("tradingeconomics.poll_interval")
+	}
+	if v.IsSet("tradingeconomics.base_url") {
+		cfg.BaseURL = v.GetString("tradingeconomics.base_url")
+	}
+	if v.IsSet("tradingeconomics.countries") {
+		if countries := v.GetStringSlice("tradingeconomics.countries"); len(countries) > 0 {
+			if len(countries) == 1 && strings.Contains(countries[0], ",") {
+				cfg.Countries = strings.Split(countries[0], ",")
+			} else {
+				cfg.Countries = countries
+			}
+		}
+	}
+	if v.IsSet("tradingeconomics.indicators") {
+		if indicators := v.GetStringSlice("tradingeconomics.indicators"); len(indicators) > 0 {
+			if len(indicators) == 1 && strings.Contains(indicators[0], ",") {
+				cfg.Indicators = strings.Split(indicators[0], ",")
+			} else {
+				cfg.Indicators = indicators
+			}
+		}
 	}
 
 	if cfg.APIKey == "" {
@@ -516,6 +638,19 @@ func LoadTelegramConfig() (*TelegramConfig, error) {
 			s = strings.TrimSpace(s)
 			if id, err := strconv.ParseInt(s, 10, 64); err == nil {
 				cfg.ChatIDs = append(cfg.ChatIDs, id)
+			}
+		}
+	}
+	if v.IsSet("telegram.keywords") {
+		keywords := v.GetStringSlice("telegram.keywords")
+		if len(keywords) == 1 && strings.Contains(keywords[0], ",") {
+			keywords = strings.Split(keywords[0], ",")
+		}
+		cfg.Keywords = make([]string, 0, len(keywords))
+		for _, kw := range keywords {
+			kw = strings.TrimSpace(kw)
+			if kw != "" {
+				cfg.Keywords = append(cfg.Keywords, kw)
 			}
 		}
 	}

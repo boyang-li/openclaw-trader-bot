@@ -394,18 +394,16 @@ L1_TELEGRAM_ENABLED=true
 ## Technical Debt & Known Issues
 
 ### High Priority
-1. **Missing Rate Limiter**: Plan specified `internal/ratelimit/` but not implemented
-2. **Missing Circuit Breaker**: Plan specified `internal/circuit/` but not implemented
+None currently.
 
 ### Medium Priority
-3. **No Integration Tests**: `test-integration` target exists but no tests written
-4. **Missing Orchestrator**: Plan included `cmd/orchestrator/` for lifecycle management
-5. **Missing Package Tests**: `internal/config`, `internal/health`, `internal/kafka` lack unit tests
+1. **No Integration Tests**: `test-integration` target exists but no tests written
+2. **Missing Orchestrator**: Plan included `cmd/orchestrator/` for lifecycle management
 
 ### Low Priority / Deviations from Plan
-6. **Naming**: Plan used `sensor-*` prefix, implementation uses just provider name
-7. **Directory**: Plan had `internal/providers/` (plural), actual is `internal/provider/<name>/`
-8. **Signals Channel**: Plan used channels, implementation uses callback handlers
+3. **Naming**: Plan used `sensor-*` prefix, implementation uses just provider name
+4. **Directory**: Plan had `internal/providers/` (plural), actual is `internal/provider/<name>/`
+5. **Signals Channel**: Plan used channels, implementation uses callback handlers
 
 ### Resolved
 - ✅ All 7 providers now have unit tests (binance, fred added Feb 2025)
@@ -413,6 +411,9 @@ L1_TELEGRAM_ENABLED=true
 - ✅ Kafka topic names reconciled to `l1.signals.*` convention
 - ✅ setup.sh updated for Redpanda (was referencing old Zookeeper/Kafka)
 - ✅ Health checkers (`KafkaChecker`, `RedisChecker`) are fully implemented
+- ✅ Package tests added for `internal/config`, `internal/health`, `internal/kafka`
+- ✅ Rate limiter implemented (`internal/ratelimit/`) with token bucket + keyed limiter
+- ✅ Circuit breaker implemented (`internal/circuit/`) with closed/open/half-open states
 
 ---
 

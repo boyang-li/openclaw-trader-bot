@@ -320,9 +320,33 @@ func LoadBinanceConfig() (*BinanceConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// Explicit bindings for nested keys (Viper quirk: UnmarshalKey doesn't see AutomaticEnv)
+	_ = v.BindEnv("binance.large_trade_threshold_usd", "L1_BINANCE_LARGE_TRADE_THRESHOLD_USD")
+	_ = v.BindEnv("binance.price_change_threshold_pct", "L1_BINANCE_PRICE_CHANGE_THRESHOLD_PCT")
+	_ = v.BindEnv("binance.pairs", "L1_BINANCE_PAIRS")
+
 	var cfg BinanceConfig
 	if err := v.UnmarshalKey("binance", &cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling Binance config: %w", err)
+	}
+
+	// Manual override: Viper's UnmarshalKey doesn't properly read bound env vars
+	// We must use Get* methods directly to read the environment variable values
+	if v.IsSet("binance.large_trade_threshold_usd") {
+		cfg.LargeTradeThresholdUSD = v.GetFloat64("binance.large_trade_threshold_usd")
+	}
+	if v.IsSet("binance.price_change_threshold_pct") {
+		cfg.PriceChangeThresholdPct = v.GetFloat64("binance.price_change_threshold_pct")
+	}
+	if v.IsSet("binance.pairs") {
+		if pairs := v.GetStringSlice("binance.pairs"); len(pairs) > 0 {
+			// Handle comma-separated string from env var (e.g., "BTCUSDT,ETHUSDT")
+			if len(pairs) == 1 && strings.Contains(pairs[0], ",") {
+				cfg.Pairs = strings.Split(pairs[0], ",")
+			} else {
+				cfg.Pairs = pairs
+			}
+		}
 	}
 
 	return &cfg, nil

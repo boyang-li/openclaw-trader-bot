@@ -2,7 +2,7 @@
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
 > **Last Updated**: 2026-02-03
-> **Status**: Wave 5 Complete (Persistence Layer Running)
+> **Status**: Wave 6 Complete (Observability Dashboards Running)
 
 ---
 
@@ -24,6 +24,7 @@
 | Container | Docker with multi-stage builds |
 | SLM | Python + Qwen 2.5-1.5B-Instruct |
 | Alerting | Python + Telegram Bot API |
+| Observability | Prometheus + Grafana |
 
 ### Data Sources (7 Providers)
 | Provider | Category | Port | API Key Required | Status |
@@ -42,6 +43,12 @@
 | SLM Worker | Signal enrichment via Qwen 2.5-1.5B | ✅ Running |
 | Alerter | Telegram/Discord notifications | ✅ Running |
 | Persister | SQLite storage with Query API | ✅ Running |
+
+### Observability Stack
+| Service | Port | Description | Status |
+|---------|------|-------------|--------|
+| Prometheus | 9090 | Metrics collection | ✅ Running |
+| Grafana | 3000 | Dashboards (admin/admin) | ✅ Running |
 
 ---
 
@@ -116,7 +123,15 @@ l1-ingestion/
 │   ├── prometheus/
 │   │   └── prometheus.yml
 │   ├── grafana/
+│   │   ├── dashboards/           # Dashboard JSON files
+│   │   │   ├── l1-overview.json  # System overview dashboard
+│   │   │   ├── redpanda.json     # Kafka/Redpanda metrics
+│   │   │   └── providers.json    # Provider health dashboard
 │   │   └── provisioning/
+│   │       ├── dashboards/
+│   │       │   └── dashboards.yml
+│   │       └── datasources/
+│   │           └── datasources.yml
 │   └── .env                # Environment variables (gitignored)
 ├── docs/
 │   └── ACC-L1-MVP-ARCHITECTURE-PLAN.md
@@ -646,9 +661,19 @@ for _, f := range zipReader.File {
 - Backup script with compression and retention policy
 - Location: `python/persister/`
 
-## Future Work (Wave 6+)
+### Wave 6: Observability ✅
+- **Grafana Dashboards** provisioned automatically via JSON files
+- Three dashboards created:
+  - **L1 Overview** (`/d/l1-overview`): Service health, signal rates, resource usage
+  - **Redpanda Metrics** (`/d/redpanda`): Topic throughput, consumer lag, request latency
+  - **Provider Health** (`/d/providers`): Per-provider memory, CPU, goroutines
+- **Prometheus** scrapes metrics from Redpanda and Go providers
+- Datasource provisioning with explicit UID for dashboard compatibility
+- Access: http://localhost:3000 (admin/admin)
+- Location: `deploy/grafana/dashboards/`
 
-- **Wave 6**: Grafana dashboards for signal flow visualization
+## Future Work (Wave 7+)
+
 - **Wave 7**: Paid providers (Whale Alert, Trading Economics) when needed
 - **Wave 8**: Kubernetes manifests, CI/CD pipeline
 
@@ -677,6 +702,18 @@ docker exec l1-redpanda rpk topic describe l1.signals.raw --brokers localhost:90
 
 # Prometheus targets
 curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[].health'
+
+# Persister API
+curl http://localhost:8088/health
+curl http://localhost:8088/stats
+curl "http://localhost:8088/signals?limit=10&urgency=high"
+
+# Grafana dashboards
+open http://localhost:3000  # Login: admin/admin
+# Dashboard URLs:
+#   - Overview: http://localhost:3000/d/l1-overview
+#   - Redpanda: http://localhost:3000/d/redpanda
+#   - Providers: http://localhost:3000/d/providers
 ```
 
 ---

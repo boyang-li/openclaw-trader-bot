@@ -188,7 +188,7 @@ l1-ingestion/
 | Wave 4 | Python SLM Worker (Qwen 2.5-1.5B enrichment) | ✅ COMPLETE |
 | Wave 4.5 | Telegram Alerter (real-time notifications) | ✅ COMPLETE |
 | Wave 5 | Persistence Layer (SQLite storage + Query API) | ✅ COMPLETE |
-| Wave 6 | Observability (Grafana dashboards) | 🔄 PENDING |
+| Wave 6 | Observability (Grafana dashboards) | ✅ COMPLETE |
 | Wave 7 | Paid Providers (Whale Alert, Trading Economics) | ⏸️ DEFERRED |
 | Wave 8 | Snowflake Integration | ⏸️ DEFERRED |
 
@@ -537,6 +537,80 @@ Time: {signal['timestamp']}
 | 5.4 | Add simple query API | 1 hr |
 | 5.5 | Add backup script | 30 min |
 
+---
+
+### Wave 6: Observability (Grafana Dashboards) ✅ COMPLETE
+
+**Goal**: Visual monitoring of system health and signal flow
+
+#### Tasks Completed
+
+| # | Task | Status |
+|---|------|--------|
+| 6.1 | Create L1 Overview Dashboard | ✅ DONE |
+| 6.2 | Create Redpanda/Kafka Dashboard | ✅ DONE |
+| 6.3 | Create Provider Health Dashboard | ✅ DONE |
+| 6.4 | Fix docker-compose volume mounts | ✅ DONE |
+| 6.5 | Set explicit Prometheus datasource UID | ✅ DONE |
+
+#### Grafana Dashboards
+
+| Dashboard | UID | Panels | Description |
+|-----------|-----|--------|-------------|
+| **L1 Overview** | `l1-overview` | 13 | Service health, signal rates, total signals, memory/CPU |
+| **Redpanda Metrics** | `redpanda` | 14 | Topic throughput, consumer lag, request latency, cluster health |
+| **Provider Health** | `providers` | 20 | Per-provider memory, CPU, goroutines, comparative views |
+
+#### Dashboard Access
+
+```bash
+# Open Grafana
+open http://localhost:3000
+# Login: admin / admin
+
+# Direct dashboard URLs:
+# - Overview:  http://localhost:3000/d/l1-overview
+# - Redpanda:  http://localhost:3000/d/redpanda
+# - Providers: http://localhost:3000/d/providers
+```
+
+#### Key Metrics Visualized
+
+**L1 Overview Dashboard:**
+- Service health status (UP/DOWN) for all providers
+- Signal production rate (per second)
+- Total raw and enriched signals
+- Topic message counts
+- Provider memory and CPU usage
+
+**Redpanda Dashboard:**
+- Cluster health (brokers, topics, partitions)
+- Records produced/fetched per topic
+- Consumer group committed offsets
+- Consumer lag by group
+- Request throughput and latency (p50, p99)
+- Redpanda CPU usage
+
+**Provider Health Dashboard:**
+- Per-provider status, goroutines, memory
+- Individual provider memory/goroutine graphs
+- Comparative views across all providers
+- Open file descriptors
+
+#### Files Created
+
+```
+deploy/grafana/
+├── dashboards/
+│   ├── l1-overview.json    # System overview
+│   ├── redpanda.json       # Kafka/Redpanda metrics
+│   └── providers.json      # Provider health
+└── provisioning/
+    ├── dashboards/
+    │   └── dashboards.yml  # Dashboard provisioning config
+    └── datasources/
+        └── datasources.yml # Prometheus datasource (uid: prometheus)
+
 #### SQLite Schema
 
 ```sql
@@ -649,7 +723,7 @@ CREATE TABLE processed_ids (
 3. ✅ Signals flowing through Redpanda topics — **DONE**
 4. ✅ SLM worker enriching signals — **DONE** (Qwen 2.5-1.5B-Instruct)
 5. ✅ Telegram alerts arriving for high-urgency signals — **DONE** (Live on user's phone!)
-6. ⏳ Grafana dashboard showing system health — **PARTIAL** (Prometheus running, dashboards pending)
+6. ✅ Grafana dashboard showing system health — **DONE** (3 dashboards: Overview, Redpanda, Providers)
 7. ⏳ System runs 24/7 for 1 week without manual intervention — **IN PROGRESS**
 
 ---

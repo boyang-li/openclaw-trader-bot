@@ -1,0 +1,8 @@
+# ACC L1-Ingestion: Alerter Dependencies
+# Python 3.11+
+
+# Kafka
+aiokafka[lz4]>=0.10.0
+
+# HTTP Client for notifications
+aiohttp>=3.9.0

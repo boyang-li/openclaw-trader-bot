@@ -216,6 +216,40 @@ services:
           memory: 4G
 
   # ===========================================================================
+  # Alerter Service (High-Priority Signal Notifications)
+  # ===========================================================================
+  alerter:
+    build:
+      context: ../python
+      dockerfile: alerter/Dockerfile
+    container_name: l1-alerter
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - INPUT_TOPIC=l1.signals.enriched
+      - CONSUMER_GROUP=alerter
+      - MIN_URGENCY=${ALERTER_MIN_URGENCY:-high}
+      - MIN_SENTIMENT_MAGNITUDE=${ALERTER_MIN_SENTIMENT:-0.5}
+      - RATE_LIMIT_PER_MINUTE=${ALERTER_RATE_LIMIT:-30}
+      - DEDUP_WINDOW_SECONDS=${ALERTER_DEDUP_WINDOW:-300}
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - DISCORD_ENABLED=${DISCORD_ENABLED:-false}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - DRY_RUN=${ALERTER_DRY_RUN:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ===========================================================================
   # Monitoring Stack
   # ===========================================================================
   prometheus:

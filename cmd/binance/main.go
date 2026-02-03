@@ -91,12 +91,7 @@ func main() {
 
 	healthServer := health.NewServer(serviceName, version, cfg.HTTP.Port, logger)
 
-	healthServer.RegisterChecker("kafka", func(ctx context.Context) health.ComponentHealth {
-		return health.ComponentHealth{
-			Status:    health.StatusHealthy,
-			LastCheck: time.Now(),
-		}
-	})
+	healthServer.RegisterChecker("kafka", health.CommonCheckers{}.KafkaChecker(cfg.Kafka.Brokers))
 
 	healthServer.RegisterChecker("binance", func(ctx context.Context) health.ComponentHealth {
 		h := binanceProvider.Health()

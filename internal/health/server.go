@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -230,19 +231,73 @@ type CommonCheckers struct{}
 // KafkaChecker creates a health checker for Kafka connectivity.
 func (CommonCheckers) KafkaChecker(brokers []string) Checker {
 	return func(ctx context.Context) ComponentHealth {
-		// TODO: Implement actual Kafka connectivity check
+		if len(brokers) == 0 {
+			return ComponentHealth{
+				Status:    StatusUnhealthy,
+				Message:   "no brokers configured",
+				LastCheck: time.Now(),
+			}
+		}
+
+		connected := 0
+		var lastErr error
+		timeout := 2 * time.Second
+
+		for _, broker := range brokers {
+			conn, err := net.DialTimeout("tcp", broker, timeout)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			conn.Close()
+			connected++
+		}
+
+		if connected == 0 {
+			return ComponentHealth{
+				Status:    StatusUnhealthy,
+				Message:   fmt.Sprintf("cannot reach any broker: %v", lastErr),
+				LastCheck: time.Now(),
+			}
+		}
+
+		if connected < len(brokers) {
+			return ComponentHealth{
+				Status:    StatusDegraded,
+				Message:   fmt.Sprintf("connected to %d/%d brokers", connected, len(brokers)),
+				LastCheck: time.Now(),
+			}
+		}
+
 		return ComponentHealth{
 			Status:    StatusHealthy,
-			Message:   fmt.Sprintf("connected to %d brokers", len(brokers)),
+			Message:   fmt.Sprintf("connected to %d brokers", connected),
 			LastCheck: time.Now(),
 		}
 	}
 }
 
 // RedisChecker creates a health checker for Redis connectivity.
-func (CommonCheckers) RedisChecker(url string) Checker {
+func (CommonCheckers) RedisChecker(addr string) Checker {
 	return func(ctx context.Context) ComponentHealth {
-		// TODO: Implement actual Redis connectivity check
+		if addr == "" {
+			return ComponentHealth{
+				Status:    StatusUnhealthy,
+				Message:   "no address configured",
+				LastCheck: time.Now(),
+			}
+		}
+
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err != nil {
+			return ComponentHealth{
+				Status:    StatusUnhealthy,
+				Message:   fmt.Sprintf("cannot connect: %v", err),
+				LastCheck: time.Now(),
+			}
+		}
+		conn.Close()
+
 		return ComponentHealth{
 			Status:    StatusHealthy,
 			Message:   "connected",

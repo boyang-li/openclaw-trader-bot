@@ -133,7 +133,7 @@ class SLMWorker:
 
         for signal_obj in batch:
             try:
-                enriched = self.processor.enrich_signal(signal_obj)
+                enriched = await asyncio.to_thread(self.processor.enrich_signal, signal_obj)
                 await self._send_enriched(enriched)
                 self._processed_count += 1
 

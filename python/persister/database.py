@@ -1,7 +1,7 @@
 import sqlite3
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from contextlib import contextmanager
@@ -183,10 +183,11 @@ class DatabaseManager:
         if not self._connection:
             return
         
-        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat() + "Z"
+        # Use SQLite's datetime() function for comparison since processed_at
+        # is stored using datetime('now') which produces 'YYYY-MM-DD HH:MM:SS' format
         cursor = self._connection.execute(
-            "DELETE FROM processed_ids WHERE processed_at < ?",
-            (cutoff,)
+            "DELETE FROM processed_ids WHERE processed_at < datetime('now', ?)",
+            (f"-{hours} hours",)
         )
         deleted = cursor.rowcount
         self._connection.commit()

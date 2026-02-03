@@ -15,11 +15,13 @@ Before working on this codebase, read these critical files:
 
 ### Current System Status
 ```
-✅ GDELT    (8081) - Geopolitical events from public file archive
-✅ Binance  (8083) - Crypto large trades via public WebSocket  
-✅ COT      (8085) - Futures positioning from CFTC public files
-⏸️ FRED    (8082) - Needs free API key from fred.stlouisfed.org
-⏸️ Others  - Require paid API keys
+✅ GDELT      (8081) - Geopolitical events from public file archive
+✅ Binance    (8083) - Crypto large trades via public WebSocket  
+✅ COT        (8085) - Futures positioning from CFTC public files
+✅ SLM Worker        - Signal enrichment via Qwen 2.5-1.5B-Instruct
+✅ Alerter           - Telegram notifications for high-priority signals
+⏸️ FRED      (8082) - Needs free API key from fred.stlouisfed.org
+⏸️ Others           - Require paid API keys
 ```
 
 ---
@@ -52,7 +54,7 @@ Before working on this codebase, read these critical files:
 
 ### 🧠 Processor-Dev (Python SLM Development)
 
-**Responsibility**: Building the Python SLM worker (Wave 4)
+**Responsibility**: Building and maintaining Python processing services
 
 **Skills Required**:
 - Python async patterns (asyncio, aiokafka)
@@ -61,16 +63,41 @@ Before working on this codebase, read these critical files:
 - Signal enrichment logic
 
 **Typical Tasks**:
-- Implement SLM processor
-- Kafka consumer setup
-- Signal enrichment pipeline
+- Implement SLM processor enhancements
+- Kafka consumer optimization
+- Signal enrichment pipeline improvements
 - Dead letter queue handling
 
 **Before Starting Work**:
 1. Read signal schema in `internal/signal/signal.go` (source of truth)
-2. Review architecture plan in `docs/ACC-L1-MVP-ARCHITECTURE-PLAN.md` (Section 4)
-3. Understand input topic: `l1-signals-raw`
-4. Understand output topic: `l1-signals-enriched`
+2. Review existing Python code in `python/slm_worker/` and `python/alerter/`
+3. Understand input topic: `l1.signals.raw` → output: `l1.signals.enriched`
+
+**Current Python Services**:
+| Service | Location | Purpose |
+|---------|----------|---------|
+| SLM Worker | `python/slm_worker/` | Enriches signals with Qwen 2.5-1.5B model |
+| Alerter | `python/alerter/` | Sends Telegram notifications for high-priority signals |
+
+**Python Code Patterns**:
+```python
+# Async Kafka consumer pattern (slm_worker/main.py)
+async def consume_loop(consumer: AIOKafkaConsumer, processor):
+    async for msg in consumer:
+        signal = json.loads(msg.value.decode())
+        enriched = await processor.enrich(signal)
+        await producer.send_and_wait(OUTPUT_TOPIC, json.dumps(enriched).encode())
+
+# Alert filtering pattern (alerter/filter.py)
+def should_alert(signal: dict) -> bool:
+    urgency = signal.get("enrichment", {}).get("urgency", "low")
+    if urgency in ["high", "critical"]:
+        return True
+    sentiment_magnitude = abs(signal.get("enrichment", {}).get("sentiment", 0))
+    if sentiment_magnitude >= 0.5:
+        return True
+    return False
+```
 
 ---
 
@@ -404,14 +431,40 @@ func (p *Provider) pollLoop(ctx context.Context) {
 
 ## Inter-Agent Communication
 
+### Signal Pipeline (Current)
+```
+Go Providers (GDELT, Binance, COT)
+    │
+    ▼
+l1.signals.raw (Kafka topic)
+    │
+    ▼
+SLM Worker (Python - Qwen 2.5-1.5B)
+    │
+    ▼
+l1.signals.enriched (Kafka topic)
+    │
+    ▼
+Alerter (Python - Telegram notifications)
+    │
+    ▼
+📱 User's Phone
+```
+
 ### Sensor-Dev → Processor-Dev
-- **Contract**: Signals published to `l1-signals-raw` topic
+- **Contract**: Signals published to `l1.signals.raw` topic
 - **Format**: JSON-encoded `signal.Signal`
 - **Key**: `{source}:{subject}` (for partition affinity)
 
-### Processor-Dev → Data-Dev
-- **Contract**: Enriched signals to `l1-signals-enriched` topic
-- **Format**: JSON with additional fields (`processed_at`, enhanced `confidence`)
+### Processor-Dev → Alerter
+- **Contract**: Enriched signals to `l1.signals.enriched` topic
+- **Format**: JSON with `enrichment` field containing:
+  - `summary`: AI-generated summary
+  - `sentiment`: -1.0 to 1.0
+  - `urgency`: low/medium/high/critical
+  - `market_impact`: neutral/positive/negative/highly_positive/highly_negative
+  - `key_entities`: extracted entities
+  - `processed_at`: timestamp
 - **Key**: Same as input
 
 ---
@@ -461,4 +514,185 @@ Whale Alert:      8084
 CME COT:          8085
 Trading Economics: 8086
 Telegram:         8087
+```
+
+---
+
+## Python Service Development Guidelines
+
+### Project Structure
+```
+python/
+├── slm_worker/           # SLM enrichment service
+│   ├── __init__.py
+│   ├── main.py          # Kafka consumer loop
+│   ├── processor.py     # Model inference
+│   ├── signal_schema.py # Signal dataclass (matches Go)
+│   ├── config.py        # Environment configuration
+│   ├── requirements.txt
+│   └── Dockerfile
+├── alerter/             # Notification service
+│   ├── __init__.py
+│   ├── main.py          # Kafka consumer loop
+│   ├── filter.py        # Alert filtering rules
+│   ├── notifier.py      # Telegram/Discord senders
+│   ├── config.py        # Environment configuration
+│   ├── requirements.txt
+│   └── Dockerfile
+└── shared/              # (future) Shared utilities
+```
+
+### Python Development Checklist
+
+When implementing a new Python service:
+
+#### Code Structure
+- [ ] Create `python/<service>/` directory
+- [ ] Create `__init__.py` with package info
+- [ ] Create `main.py` with async Kafka consumer loop
+- [ ] Create `config.py` using environment variables
+- [ ] Create `requirements.txt` with pinned versions
+- [ ] Create `Dockerfile` with health check
+
+#### Kafka Consumer Pattern
+```python
+# Standard consumer loop pattern
+async def main():
+    consumer = AIOKafkaConsumer(
+        INPUT_TOPIC,
+        bootstrap_servers=KAFKA_BROKERS,
+        group_id=CONSUMER_GROUP,
+        auto_offset_reset='earliest',
+    )
+    await consumer.start()
+    try:
+        async for msg in consumer:
+            await process_message(msg)
+    finally:
+        await consumer.stop()
+```
+
+#### Health Check Pattern
+```python
+# Health endpoint for Docker health check
+from aiohttp import web
+
+async def health_handler(request):
+    return web.json_response({"status": "healthy"})
+
+app = web.Application()
+app.router.add_get('/health', health_handler)
+```
+
+#### Environment Variables
+```bash
+# Required for all Python services
+KAFKA_BROKERS=redpanda:9092
+INPUT_TOPIC=l1.signals.raw
+OUTPUT_TOPIC=l1.signals.enriched
+CONSUMER_GROUP=<service-name>
+
+# SLM Worker specific
+MODEL_NAME=Qwen/Qwen2.5-1.5B-Instruct
+DEVICE=cpu
+BATCH_SIZE=5
+
+# Alerter specific
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=<from-botfather>
+TELEGRAM_CHAT_ID=<your-chat-id>
+MIN_URGENCY=high
+MIN_SENTIMENT_MAGNITUDE=0.5
+```
+
+### Docker Integration
+
+#### Dockerfile Pattern
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+
+CMD ["python", "-m", "<service>.main"]
+```
+
+#### docker-compose.yml Service Pattern
+```yaml
+<service-name>:
+  build:
+    context: ../python
+    dockerfile: <service>/Dockerfile
+  container_name: l1-<service-name>
+  depends_on:
+    redpanda:
+      condition: service_healthy
+  environment:
+    - KAFKA_BROKERS=redpanda:9092
+    - INPUT_TOPIC=l1.signals.enriched
+    # ... other env vars
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+  networks:
+    - l1-network
+```
+
+### Testing Python Services
+
+```bash
+# Run service locally
+cd python/<service>
+pip install -r requirements.txt
+python -m <service>.main
+
+# Check logs in Docker
+docker compose logs -f <service-name>
+
+# Verify Kafka consumption
+docker exec l1-redpanda rpk topic consume l1.signals.enriched --brokers localhost:9092 --num 5
+```
+
+### Common Python Pitfalls
+
+#### ❌ DON'T: Block the event loop
+```python
+# WRONG - blocks async loop
+time.sleep(5)
+response = requests.get(url)
+```
+
+#### ✅ DO: Use async operations
+```python
+# CORRECT - non-blocking
+await asyncio.sleep(5)
+async with aiohttp.ClientSession() as session:
+    response = await session.get(url)
+```
+
+#### ❌ DON'T: Ignore Kafka consumer errors
+```python
+# WRONG - silent failure
+async for msg in consumer:
+    process(msg)  # If this fails, message is lost
+```
+
+#### ✅ DO: Handle errors with retries/DLQ
+```python
+# CORRECT - error handling
+async for msg in consumer:
+    try:
+        await process(msg)
+    except Exception as e:
+        logger.error(f"Failed to process: {e}")
+        await send_to_dlq(msg)
 ```

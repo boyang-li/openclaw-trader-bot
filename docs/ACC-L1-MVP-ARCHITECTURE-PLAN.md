@@ -184,9 +184,9 @@ l1-ingestion/
 | Wave 1 | Foundation (Project structure, Go module, Signal schema) | ✅ COMPLETE |
 | Wave 2 | Core Abstractions (Provider interface, Kafka producer) | ✅ COMPLETE |
 | Wave 3 | Free Providers (GDELT, FRED, Binance, COT) | ✅ COMPLETE |
-| Wave 3.5 | **NEW**: Containerization + Redpanda Migration | 🔄 PENDING |
-| Wave 4 | Python SLM Worker | 🔄 PENDING |
-| Wave 4.5 | **NEW**: Telegram Alerter | 🔄 PENDING |
+| Wave 3.5 | Containerization + Redpanda Migration | ✅ COMPLETE |
+| Wave 4 | Python SLM Worker (Qwen 2.5-1.5B enrichment) | ✅ COMPLETE |
+| Wave 4.5 | Telegram Alerter (real-time notifications) | ✅ COMPLETE |
 | Wave 5 | Persistence Layer (SQLite/DuckDB) | 🔄 PENDING |
 | Wave 6 | Observability (Grafana dashboards) | 🔄 PENDING |
 | Wave 7 | Paid Providers (Whale Alert, Trading Economics) | ⏸️ DEFERRED |
@@ -644,13 +644,13 @@ CREATE TABLE processed_ids (
 
 ### MVP Complete When:
 
-1. ✅ `docker compose up` starts entire stack
-2. ✅ 4 free providers collecting signals (GDELT, FRED, Binance, COT)
-3. ✅ Signals flowing through Redpanda topics
-4. ✅ SLM worker enriching signals
-5. ✅ Telegram alerts arriving for high-urgency signals
-6. ✅ Grafana dashboard showing system health
-7. ✅ System runs 24/7 for 1 week without manual intervention
+1. ✅ `docker compose up` starts entire stack — **DONE** (2026-02-03)
+2. ✅ 3 free providers collecting signals (GDELT, Binance, COT) — **DONE** (FRED needs API key)
+3. ✅ Signals flowing through Redpanda topics — **DONE**
+4. ✅ SLM worker enriching signals — **DONE** (Qwen 2.5-1.5B-Instruct)
+5. ✅ Telegram alerts arriving for high-urgency signals — **DONE** (Live on user's phone!)
+6. ⏳ Grafana dashboard showing system health — **PARTIAL** (Prometheus running, dashboards pending)
+7. ⏳ System runs 24/7 for 1 week without manual intervention — **IN PROGRESS**
 
 ---
 

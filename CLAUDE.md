@@ -2,7 +2,7 @@
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
 > **Last Updated**: 2026-02-03
-> **Status**: Wave 3.5 Complete (Containerization + All Free Providers Working)
+> **Status**: Wave 4.5 Complete (SLM Worker + Alerter Running)
 
 ---
 
@@ -22,6 +22,8 @@
 | UUID | google/uuid |
 | Metrics | Prometheus (promhttp) |
 | Container | Docker with multi-stage builds |
+| SLM | Python + Qwen 2.5-1.5B-Instruct |
+| Alerting | Python + Telegram Bot API |
 
 ### Data Sources (7 Providers)
 | Provider | Category | Port | API Key Required | Status |
@@ -33,6 +35,12 @@
 | CME COT | Macro | 8085 | ❌ No (public files) | ✅ Running |
 | Trading Economics | Macro | 8086 | ✅ Yes (paid) | ⏸️ Deferred |
 | Telegram | Geopolitical | 8087 | ✅ Yes (bot token) | ⏸️ Deferred |
+
+### Python Processing Services
+| Service | Description | Status |
+|---------|-------------|--------|
+| SLM Worker | Signal enrichment via Qwen 2.5-1.5B | ✅ Running |
+| Alerter | Telegram/Discord notifications | ✅ Running |
 
 ---
 
@@ -75,14 +83,32 @@ l1-ingestion/
 │   │   └── config.go       # Viper-based config with Load*Config() funcs
 │   └── health/             # HTTP health server
 │       └── server.go       # /health, /ready, /metrics endpoints
+├── python/                 # Python processing layer
+│   ├── slm_worker/         # SLM enrichment service
+│   │   ├── __init__.py
+│   │   ├── main.py         # Kafka consumer loop
+│   │   ├── processor.py    # Qwen 2.5-1.5B model inference
+│   │   ├── signal_schema.py # Signal dataclass (matches Go)
+│   │   └── config.py       # Environment configuration
+│   ├── alerter/            # Alert notification service
+│   │   ├── __init__.py
+│   │   ├── main.py         # Kafka consumer loop
+│   │   ├── filter.py       # Alert filtering rules
+│   │   ├── notifier.py     # Telegram/Discord senders
+│   │   ├── config.py       # Environment configuration
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   ├── requirements.txt    # SLM worker dependencies
+│   └── Dockerfile          # SLM worker Docker build
 ├── deploy/
-│   ├── docker-compose.yml  # Redpanda, providers, Prometheus, Grafana
+│   ├── docker-compose.yml  # Redpanda, providers, Python services, monitoring
 │   ├── docker/
 │   │   └── Dockerfile.provider  # Multi-stage Go build
 │   ├── prometheus/
 │   │   └── prometheus.yml
-│   └── grafana/
-│       └── provisioning/
+│   ├── grafana/
+│   │   └── provisioning/
+│   └── .env                # Environment variables (gitignored)
 ├── docs/
 │   └── ACC-L1-MVP-ARCHITECTURE-PLAN.md
 ├── bin/                    # Compiled binaries (gitignored)
@@ -587,12 +613,28 @@ for _, f := range zipReader.File {
 
 ---
 
-## Future Work (Wave 4+)
+## Completed Waves
 
-- **Wave 4**: Python SLM Worker (Kafka consumer + Qwen2.5-1.5B)
-- **Wave 5**: Snowflake Integration (Kafka Connector + dbt models)
-- **Wave 6**: Grafana dashboards, Prometheus alerting
-- **Wave 7**: Kubernetes manifests, CI/CD pipeline
+### Wave 4: Python SLM Worker ✅
+- Consumes raw signals from `l1.signals.raw` topic
+- Enriches signals using **Qwen 2.5-1.5B-Instruct** model (local inference)
+- Publishes enriched signals to `l1.signals.enriched` topic
+- Adds: sentiment analysis, urgency classification, market impact assessment, summary
+- Location: `python/slm_worker/`
+
+### Wave 4.5: Telegram Alerter ✅
+- Consumes enriched signals from `l1.signals.enriched` topic
+- Filters based on: urgency (≥high), sentiment magnitude (≥0.5), market impact
+- Sends real-time notifications via Telegram Bot API
+- Rate limiting (30/min) and deduplication (5min window)
+- Location: `python/alerter/`
+
+## Future Work (Wave 5+)
+
+- **Wave 5**: Persistence Layer (SQLite/DuckDB for signal storage and replay)
+- **Wave 6**: Grafana dashboards for signal flow visualization
+- **Wave 7**: Paid providers (Whale Alert, Trading Economics) when needed
+- **Wave 8**: Kubernetes manifests, CI/CD pipeline
 
 ---
 

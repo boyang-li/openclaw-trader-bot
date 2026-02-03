@@ -10,6 +10,7 @@
 # Services:
 #   - Redpanda (Kafka-compatible broker)
 #   - Go Providers (GDELT, FRED, Binance, COT)
+#   - Python Services (SLM Worker, Alerter, Persister)
 #   - Prometheus + Grafana (Observability)
 #   - Redis (Rate limiting, caching)
 #
@@ -18,15 +19,13 @@
 #   - 8082: FRED provider health
 #   - 8083: Binance provider health
 #   - 8085: COT provider health
+#   - 8088: Persister API (query signals)
 #   - 9092: Redpanda Kafka API
-#   - 8082: Redpanda REST Proxy (internal)
 #   - 9644: Redpanda Admin API
 #   - 9090: Prometheus
 #   - 3000: Grafana
 #   - 6379: Redis
 # =============================================================================
-
-version: '3.8'
 
 services:
   # ===========================================================================
@@ -250,6 +249,47 @@ services:
           memory: 256M
 
   # ===========================================================================
+  # Persister Service (Signal Storage to SQLite)
+  # ===========================================================================
+  persister:
+    build:
+      context: ../python
+      dockerfile: persister/Dockerfile
+    container_name: l1-persister
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - INPUT_TOPIC=l1.signals.enriched
+      - CONSUMER_GROUP=persister
+      - DB_PATH=/data/signals.db
+      - DB_JOURNAL_MODE=WAL
+      - BATCH_SIZE=${PERSISTER_BATCH_SIZE:-50}
+      - DEDUP_WINDOW_HOURS=${PERSISTER_DEDUP_HOURS:-24}
+      - API_ENABLED=true
+      - API_PORT=8080
+      - API_MAX_RESULTS=${PERSISTER_MAX_RESULTS:-1000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8088:8080"
+    volumes:
+      - persister-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ===========================================================================
   # Monitoring Stack
   # ===========================================================================
   prometheus:
@@ -329,3 +369,4 @@ volumes:
   grafana-data:
   redis-data:
   huggingface-cache:
+  persister-data:

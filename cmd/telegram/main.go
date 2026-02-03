@@ -39,7 +39,8 @@ func main() {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
 	}
 
-	cfg.HTTP.Port = 8087
+	// Use standard port 8080 inside container (mapped externally via docker-compose)
+	cfg.HTTP.Port = 8080
 
 	telegramCfg, err := config.LoadTelegramConfig()
 	if err != nil {

@@ -2,7 +2,7 @@
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
 > **Last Updated**: 2026-02-03
-> **Status**: Wave 7 Complete (FRED Provider Running)
+> **Status**: Wave 7.5 Complete (Telegram Ingestor Running)
 
 ---
 
@@ -34,8 +34,8 @@
 | Binance | Crypto | 8083 | ❌ No (public WebSocket) | ✅ Running |
 | Whale Alert | Crypto | 8084 | ✅ Yes (paid) | ⏸️ Deferred |
 | CME COT | Macro | 8085 | ❌ No (public files) | ✅ Running |
-| Trading Economics | Macro | 8087 | ✅ Yes (paid) | ⏸️ Deferred |
-| Telegram | Geopolitical | 8089 | ✅ Yes (bot token) | ⏸️ Deferred |
+| Trading Economics | Macro | - | ✅ Yes (paid) | ⏸️ Deferred |
+| Telegram | Geopolitical/Crypto | 8087 | ✅ Yes (bot token) | ✅ Running |
 
 ### Python Processing Services
 | Service | Description | Status |
@@ -379,10 +379,12 @@ L1_COT_POLL_INTERVAL=24h
 L1_TRADINGECONOMICS_API_KEY=your-api-key
 L1_TRADINGECONOMICS_POLL_INTERVAL=5m
 
-# Telegram
+# Telegram Ingestor
 L1_TELEGRAM_BOT_TOKEN=your-bot-token
-L1_TELEGRAM_CHAT_IDS=-1001234567890
+L1_TELEGRAM_CHAT_IDS=-1001234567890,-1009876543210
 L1_TELEGRAM_KEYWORDS=bitcoin,fed,inflation
+L1_TELEGRAM_POLL_INTERVAL=5s
+L1_TELEGRAM_ENABLED=true
 ```
 
 ---
@@ -687,6 +689,25 @@ for _, f := range zipReader.File {
 - Alerter enhanced with FRED-specific formatting showing indicator values and changes
 - Port: 8086 | API Key: Free (get from https://fred.stlouisfed.org/docs/api/api_key.html)
 
+### Wave 7.5: Telegram Ingestor ✅
+- **Telegram channel/group monitoring** for breaking news and market signals
+- Uses Telegram Bot API `getUpdates` long polling
+- Features:
+  - **Keyword filtering**: Only processes messages containing configured keywords
+  - **Default keywords** (20): breaking, urgent, alert, warning, military, attack, strike, explosion, sanction, tariff, embargo, fed, ecb, boj, rate, inflation, bitcoin, ethereum, crypto, whale
+  - **Category classification**: Auto-classifies as geopolitical, macro, or crypto based on content
+  - **Sentiment analysis**: Basic keyword-based sentiment scoring
+  - **Urgency detection**: Flags "breaking", "urgent", "emergency" as high urgency
+  - **Deduplication**: Tracks seen messages to avoid duplicates
+- Alerter enhanced with Telegram-specific formatting showing channel, username, and message preview
+- Port: 8087 | Bot Token: Reuses alerter bot (or create separate bot via @BotFather)
+- Configuration:
+  - `L1_TELEGRAM_BOT_TOKEN`: Bot token from @BotFather
+  - `L1_TELEGRAM_CHAT_IDS`: Comma-separated channel/group IDs (negative numbers)
+  - `L1_TELEGRAM_KEYWORDS`: Comma-separated keywords to filter messages
+  - `L1_TELEGRAM_POLL_INTERVAL`: Polling interval (default: 5s)
+- **Note**: Bot must be added to channels/groups to receive messages. To get channel IDs, forward a message to @userinfobot on Telegram.
+
 ## Future Work (Wave 8+)
 
 - **Wave 8**: Paid providers (Whale Alert, Trading Economics) when needed
@@ -706,9 +727,14 @@ docker compose build binance --no-cache && docker compose up -d binance
 # View logs
 docker compose logs -f binance
 docker compose logs gdelt --tail 50
+docker compose logs telegram-ingestor --tail 50
 
 # Check health
-curl http://localhost:8083/health
+curl http://localhost:8081/health  # GDELT
+curl http://localhost:8083/health  # Binance
+curl http://localhost:8085/health  # COT
+curl http://localhost:8086/health  # FRED
+curl http://localhost:8087/health  # Telegram
 
 # Redpanda commands
 docker exec l1-redpanda rpk topic list --brokers localhost:9092
@@ -722,6 +748,7 @@ curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[].health'
 curl http://localhost:8088/health
 curl http://localhost:8088/stats
 curl "http://localhost:8088/signals?limit=10&urgency=high"
+curl "http://localhost:8088/signals?source=telegram&limit=5"
 
 # Grafana dashboards
 open http://localhost:3000  # Login: admin/admin

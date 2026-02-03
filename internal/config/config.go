@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -481,9 +482,42 @@ func LoadTelegramConfig() (*TelegramConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	_ = v.BindEnv("telegram.bot_token", "L1_TELEGRAM_BOT_TOKEN")
+	_ = v.BindEnv("telegram.enabled", "L1_TELEGRAM_ENABLED")
+	_ = v.BindEnv("telegram.poll_interval", "L1_TELEGRAM_POLL_INTERVAL")
+	_ = v.BindEnv("telegram.poll_timeout", "L1_TELEGRAM_POLL_TIMEOUT")
+	_ = v.BindEnv("telegram.chat_ids", "L1_TELEGRAM_CHAT_IDS")
+	_ = v.BindEnv("telegram.keywords", "L1_TELEGRAM_KEYWORDS")
+
 	var cfg TelegramConfig
 	if err := v.UnmarshalKey("telegram", &cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling Telegram config: %w", err)
+	}
+
+	if v.IsSet("telegram.bot_token") {
+		cfg.BotToken = v.GetString("telegram.bot_token")
+	}
+	if v.IsSet("telegram.enabled") {
+		cfg.Enabled = v.GetBool("telegram.enabled")
+	}
+	if v.IsSet("telegram.poll_interval") {
+		cfg.PollInterval = v.GetDuration("telegram.poll_interval")
+	}
+	if v.IsSet("telegram.poll_timeout") {
+		cfg.PollTimeout = v.GetInt("telegram.poll_timeout")
+	}
+	if v.IsSet("telegram.chat_ids") {
+		chatIDStrs := v.GetStringSlice("telegram.chat_ids")
+		if len(chatIDStrs) == 1 && strings.Contains(chatIDStrs[0], ",") {
+			chatIDStrs = strings.Split(chatIDStrs[0], ",")
+		}
+		cfg.ChatIDs = make([]int64, 0, len(chatIDStrs))
+		for _, s := range chatIDStrs {
+			s = strings.TrimSpace(s)
+			if id, err := strconv.ParseInt(s, 10, 64); err == nil {
+				cfg.ChatIDs = append(cfg.ChatIDs, id)
+			}
+		}
 	}
 
 	if cfg.BotToken == "" {

@@ -126,6 +126,12 @@ class TelegramNotifier(Notifier):
                 lines.extend(["", "<b>Economic Data:</b>"])
                 lines.extend(econ_lines)
         
+        if raw_data and msg["source"].lower() == "telegram":
+            tg_lines = self._format_telegram_message_details(raw_data)
+            if tg_lines:
+                lines.extend(["", "<b>Source Message:</b>"])
+                lines.extend(tg_lines)
+        
         if msg["summary"]:
             lines.extend(["", f"<b>Summary:</b> {msg['summary'][:500]}"])
         
@@ -188,6 +194,37 @@ class TelegramNotifier(Notifier):
         
         if "date" in raw_data:
             lines.append(f"  📅 <b>Release Date:</b> {raw_data['date']}")
+        
+        return lines
+
+    def _format_telegram_message_details(self, raw_data: dict[str, Any]) -> list[str]:
+        lines = []
+        
+        chat_title = raw_data.get("chat_title", "")
+        chat_username = raw_data.get("chat_username", "")
+        chat_type = raw_data.get("chat_type", "")
+        
+        if chat_title:
+            channel_display = chat_title
+            if chat_username:
+                channel_display += f" (@{chat_username})"
+            lines.append(f"  📢 <b>Channel:</b> {channel_display}")
+        elif chat_username:
+            lines.append(f"  📢 <b>Channel:</b> @{chat_username}")
+        
+        if chat_type:
+            type_emoji = "📢" if chat_type == "channel" else "👥" if chat_type in ("group", "supergroup") else "💬"
+            lines.append(f"  {type_emoji} <b>Type:</b> {chat_type}")
+        
+        from_username = raw_data.get("from_username", "")
+        if from_username:
+            lines.append(f"  👤 <b>From:</b> @{from_username}")
+        
+        text = raw_data.get("text", "")
+        if text:
+            preview = text[:300] + "..." if len(text) > 300 else text
+            preview = preview.replace("<", "&lt;").replace(">", "&gt;")
+            lines.append(f"  💬 <i>{preview}</i>")
         
         return lines
 
@@ -254,6 +291,11 @@ class DiscordNotifier(Notifier):
             if econ_details:
                 fields.append({"name": "Economic Data", "value": econ_details, "inline": False})
         
+        if raw_data and msg["source"].lower() == "telegram":
+            tg_details = self._format_telegram_for_discord(raw_data)
+            if tg_details:
+                fields.append({"name": "Source Message", "value": tg_details, "inline": False})
+        
         fields.append({"name": "Alert Triggers", "value": ", ".join(msg["reasons"]), "inline": False})
         
         if msg["summary"]:
@@ -314,6 +356,31 @@ class DiscordNotifier(Notifier):
             parts.append(f"📅 {raw_data['date']}")
         
         return " | ".join(parts) if parts else ""
+
+    def _format_telegram_for_discord(self, raw_data: dict[str, Any]) -> str:
+        parts = []
+        
+        chat_title = raw_data.get("chat_title", "")
+        chat_username = raw_data.get("chat_username", "")
+        
+        if chat_title:
+            channel_display = f"📢 **{chat_title}**"
+            if chat_username:
+                channel_display += f" (@{chat_username})"
+            parts.append(channel_display)
+        elif chat_username:
+            parts.append(f"📢 **@{chat_username}**")
+        
+        from_username = raw_data.get("from_username", "")
+        if from_username:
+            parts.append(f"👤 @{from_username}")
+        
+        text = raw_data.get("text", "")
+        if text:
+            preview = text[:200] + "..." if len(text) > 200 else text
+            parts.append(f"*\"{preview}\"*")
+        
+        return "\n".join(parts) if parts else ""
 
 
 class ConsoleNotifier(Notifier):

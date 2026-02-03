@@ -180,6 +180,31 @@ services:
     networks:
       - l1-network
 
+  # Telegram - Channel/Group Message Monitoring (Geopolitical/Crypto/Macro)
+  telegram-ingestor:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.provider
+      args:
+        PROVIDER: telegram
+    container_name: l1-telegram
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - L1_KAFKA_BROKERS=redpanda:9092
+      - L1_KAFKA_TOPIC_RAW=l1.signals.raw
+      - L1_TELEGRAM_BOT_TOKEN=${TELEGRAM_INGESTOR_BOT_TOKEN:?TELEGRAM_INGESTOR_BOT_TOKEN is required}
+      - L1_TELEGRAM_CHAT_IDS=${TELEGRAM_INGESTOR_CHAT_IDS:-}
+      - L1_TELEGRAM_ENABLED=${TELEGRAM_INGESTOR_ENABLED:-true}
+      - L1_TELEGRAM_POLL_INTERVAL=${TELEGRAM_POLL_INTERVAL:-5s}
+      - L1_LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "8087:8080"
+    restart: unless-stopped
+    networks:
+      - l1-network
+
   # ===========================================================================
   # Python SLM Worker (Signal Enrichment)
   # ===========================================================================

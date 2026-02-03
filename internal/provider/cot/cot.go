@@ -3,7 +3,8 @@
 package cot
 
 import (
-	"compress/gzip"
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -21,7 +22,7 @@ import (
 )
 
 const (
-	DefaultBaseURL      = "https://www.cftc.gov/dea/newcot"
+	DefaultBaseURL      = "https://www.cftc.gov/files/dea/history"
 	DefaultPollInterval = 6 * time.Hour
 	COTReleaseDay       = time.Friday
 	COTReleaseHour      = 15
@@ -179,15 +180,26 @@ func (p *Provider) pollLoop(ctx context.Context) {
 
 func (p *Provider) poll(ctx context.Context) error {
 	year := time.Now().Year()
-	url := fmt.Sprintf("%s/deacot%d.zip", p.config.BaseURL, year)
 
-	data, err := p.fetchAndParseCOT(ctx, url)
-	if err != nil {
-		url = fmt.Sprintf("%s/fut_fin_txt_%d.zip", p.config.BaseURL, year)
+	urls := []string{
+		fmt.Sprintf("%s/deacot%d.zip", p.config.BaseURL, year),
+		fmt.Sprintf("%s/fut_fin_txt_%d.zip", p.config.BaseURL, year),
+		fmt.Sprintf("%s/deacot%d.zip", p.config.BaseURL, year-1),
+		fmt.Sprintf("%s/fut_fin_txt_%d.zip", p.config.BaseURL, year-1),
+	}
+
+	var data []*COTData
+	var err error
+	for _, url := range urls {
 		data, err = p.fetchAndParseCOT(ctx, url)
-		if err != nil {
-			return fmt.Errorf("fetch COT data: %w", err)
+		if err == nil && len(data) > 0 {
+			p.Logger().Debug("Successfully fetched COT data", zap.String("url", url))
+			break
 		}
+	}
+
+	if err != nil || len(data) == 0 {
+		return fmt.Errorf("fetch COT data from all sources: %w", err)
 	}
 
 	for _, cot := range data {
@@ -213,12 +225,14 @@ func (p *Provider) poll(ctx context.Context) error {
 }
 
 func (p *Provider) fetchAndParseCOT(ctx context.Context, url string) ([]*COTData, error) {
+	p.Logger().Debug("Fetching COT data", zap.String("url", url))
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("User-Agent", "ACC-L1-Ingestion/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ACC-L1-Ingestion/1.0)")
+	req.Header.Set("Accept", "application/zip, application/octet-stream, */*")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -230,17 +244,29 @@ func (p *Provider) fetchAndParseCOT(ctx context.Context, url string) ([]*COTData
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	var reader io.Reader = resp.Body
-	if strings.Contains(resp.Header.Get("Content-Encoding"), "gzip") ||
-		strings.HasSuffix(url, ".zip") || strings.HasSuffix(url, ".gz") {
-		gzReader, err := gzip.NewReader(resp.Body)
-		if err == nil {
-			defer gzReader.Close()
-			reader = gzReader
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	zipReader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return nil, fmt.Errorf("open zip: %w", err)
+	}
+
+	for _, f := range zipReader.File {
+		if strings.HasSuffix(strings.ToLower(f.Name), ".csv") ||
+			strings.HasSuffix(strings.ToLower(f.Name), ".txt") {
+			rc, err := f.Open()
+			if err != nil {
+				continue
+			}
+			defer rc.Close()
+			return p.parseCSV(rc)
 		}
 	}
 
-	return p.parseCSV(reader)
+	return nil, fmt.Errorf("no CSV/TXT file found in zip archive")
 }
 
 func (p *Provider) parseCSV(reader io.Reader) ([]*COTData, error) {

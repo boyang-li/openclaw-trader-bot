@@ -387,7 +387,7 @@ func LoadCOTConfig() (*COTConfig, error) {
 
 	v.SetDefault("cot.enabled", true)
 	v.SetDefault("cot.poll_interval", "6h")
-	v.SetDefault("cot.base_url", "https://www.cftc.gov/dea/newcot")
+	v.SetDefault("cot.base_url", "https://www.cftc.gov/files/dea/history")
 	v.SetDefault("cot.contracts", []string{
 		"GOLD - COMMODITY EXCHANGE INC.",
 		"SILVER - COMMODITY EXCHANGE INC.",

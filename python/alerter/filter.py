@@ -10,6 +10,13 @@ logger = logging.getLogger(__name__)
 
 URGENCY_LEVELS = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
+SOURCE_MIN_URGENCY = {
+    "gdelt": "high",
+    "binance": "medium",
+    "cme_cot": "medium",
+    "fred": "medium",
+}
+
 
 @dataclass
 class FilterResult:
@@ -52,6 +59,17 @@ class SignalFilter:
         enrichment = signal.get("enrichment", {}) or {}
         refined_urgency = enrichment.get("refined_urgency", urgency)
         urgency_level = URGENCY_LEVELS.get(refined_urgency, URGENCY_LEVELS.get(urgency, 0))
+        
+        source = signal.get("source", "").lower()
+        source_min_urgency = SOURCE_MIN_URGENCY.get(source)
+        if source_min_urgency:
+            source_min_level = URGENCY_LEVELS.get(source_min_urgency, 0)
+            if urgency_level < source_min_level:
+                return FilterResult(
+                    should_alert=False, 
+                    reasons=[],
+                    suppression_reason=f"source '{source}' requires min urgency '{source_min_urgency}', got '{refined_urgency}'"
+                )
         
         if urgency_level >= self.min_urgency_level:
             reasons.append(f"urgency={refined_urgency}")

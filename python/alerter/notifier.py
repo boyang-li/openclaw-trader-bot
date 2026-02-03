@@ -18,6 +18,7 @@ class Notifier(ABC):
 
     def format_signal_message(self, signal: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
         enrichment = signal.get("enrichment", {}) or {}
+        raw_data = signal.get("raw_data", {}) or {}
         
         return {
             "subject": signal.get("subject", "Unknown"),
@@ -31,6 +32,7 @@ class Notifier(ABC):
             "confidence": signal.get("confidence", 0.0),
             "timestamp": signal.get("timestamp", ""),
             "reasons": reasons,
+            "raw_data": raw_data,
         }
 
 
@@ -111,6 +113,13 @@ class TelegramNotifier(Notifier):
             f"{impact_emoji} <b>Market Impact:</b> {msg['market_impact']}",
         ]
         
+        raw_data = msg.get("raw_data", {})
+        if raw_data and msg["source"].lower() == "binance":
+            trade_lines = self._format_binance_trade_details(raw_data)
+            if trade_lines:
+                lines.extend(["", "<b>Trade Details:</b>"])
+                lines.extend(trade_lines)
+        
         if msg["summary"]:
             lines.extend(["", f"<b>Summary:</b> {msg['summary'][:500]}"])
         
@@ -122,6 +131,33 @@ class TelegramNotifier(Notifier):
         ])
         
         return "\n".join(lines)
+
+    def _format_binance_trade_details(self, raw_data: dict[str, Any]) -> list[str]:
+        lines = []
+        
+        if "value_usd" in raw_data:
+            value = raw_data["value_usd"]
+            lines.append(f"  💰 <b>Value:</b> ${value:,.0f} USD")
+        
+        if "quantity" in raw_data:
+            qty = raw_data["quantity"]
+            lines.append(f"  📦 <b>Quantity:</b> {qty:,.4f}")
+        
+        if "price" in raw_data:
+            price = raw_data["price"]
+            lines.append(f"  💵 <b>Price:</b> ${price:,.2f}")
+        
+        if "direction" in raw_data:
+            direction = raw_data["direction"]
+            direction_emoji = "🟢" if direction == "buy" else "🔴"
+            lines.append(f"  {direction_emoji} <b>Direction:</b> {direction.upper()}")
+        
+        if "change_24h_pct" in raw_data:
+            change = raw_data["change_24h_pct"]
+            change_emoji = "📈" if change > 0 else "📉"
+            lines.append(f"  {change_emoji} <b>24h Change:</b> {change:+.2f}%")
+        
+        return lines
 
 
 class DiscordNotifier(Notifier):
@@ -173,8 +209,15 @@ class DiscordNotifier(Notifier):
             {"name": "Urgency", "value": msg["urgency"].upper(), "inline": True},
             {"name": "Sentiment", "value": f"{msg['sentiment']:+.2f}", "inline": True},
             {"name": "Market Impact", "value": msg["market_impact"], "inline": True},
-            {"name": "Alert Triggers", "value": ", ".join(msg["reasons"]), "inline": False},
         ]
+        
+        raw_data = msg.get("raw_data", {})
+        if raw_data and msg["source"].lower() == "binance":
+            trade_details = self._format_binance_trade_for_discord(raw_data)
+            if trade_details:
+                fields.append({"name": "Trade Details", "value": trade_details, "inline": False})
+        
+        fields.append({"name": "Alert Triggers", "value": ", ".join(msg["reasons"]), "inline": False})
         
         if msg["summary"]:
             fields.append({"name": "Summary", "value": msg["summary"][:1024], "inline": False})
@@ -186,6 +229,30 @@ class DiscordNotifier(Notifier):
             "timestamp": datetime.utcnow().isoformat(),
             "footer": {"text": f"Confidence: {msg['confidence']:.0%}"},
         }
+
+    def _format_binance_trade_for_discord(self, raw_data: dict[str, Any]) -> str:
+        parts = []
+        
+        if "value_usd" in raw_data:
+            parts.append(f"💰 **Value:** ${raw_data['value_usd']:,.0f}")
+        
+        if "quantity" in raw_data:
+            parts.append(f"📦 **Qty:** {raw_data['quantity']:,.4f}")
+        
+        if "price" in raw_data:
+            parts.append(f"💵 **Price:** ${raw_data['price']:,.2f}")
+        
+        if "direction" in raw_data:
+            direction = raw_data["direction"]
+            emoji = "🟢" if direction == "buy" else "🔴"
+            parts.append(f"{emoji} **{direction.upper()}**")
+        
+        if "change_24h_pct" in raw_data:
+            change = raw_data["change_24h_pct"]
+            emoji = "📈" if change > 0 else "📉"
+            parts.append(f"{emoji} **24h:** {change:+.2f}%")
+        
+        return " | ".join(parts) if parts else ""
 
 
 class ConsoleNotifier(Notifier):

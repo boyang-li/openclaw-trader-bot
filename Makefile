@@ -14,11 +14,11 @@ DOCKER_COMPOSE := docker compose -f deploy/docker-compose.yml
 DOCKER_REGISTRY ?= ghcr.io/openclaworg
 
 # Binaries
-BINARIES := gdelt fred binance whalealert cot tradingeconomics telegram
+BINARIES := gdelt fred binance whalealert cot tradingeconomics telegram orchestrator
 
 .PHONY: all build clean test lint fmt help
-.PHONY: build-gdelt build-fred build-binance build-whalealert build-cot build-tradingeconomics build-telegram
-.PHONY: run-gdelt run-fred run-binance run-whalealert run-cot run-tradingeconomics run-telegram
+.PHONY: build-gdelt build-fred build-binance build-whalealert build-cot build-tradingeconomics build-telegram build-orchestrator
+.PHONY: run-gdelt run-fred run-binance run-whalealert run-cot run-tradingeconomics run-telegram run-orchestrator
 .PHONY: docker-build docker-up docker-down docker-logs
 .PHONY: test-coverage test-integration
 .PHONY: deps tidy verify
@@ -78,6 +78,12 @@ build-telegram:
 	@mkdir -p $(BINARY_DIR)
 	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/telegram ./cmd/telegram
 
+## build-orchestrator: Build orchestrator (manages all providers)
+build-orchestrator:
+	@echo "Building orchestrator..."
+	@mkdir -p $(BINARY_DIR)
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_DIR)/orchestrator ./cmd/orchestrator
+
 # ============================================================================
 # Run targets
 # ============================================================================
@@ -109,6 +115,10 @@ run-tradingeconomics:
 ## run-telegram: Run Telegram ingestor locally
 run-telegram:
 	$(GO) run $(GOFLAGS) ./cmd/telegram
+
+## run-orchestrator: Run orchestrator locally (all providers)
+run-orchestrator:
+	$(GO) run $(GOFLAGS) ./cmd/orchestrator
 
 # ============================================================================
 # Test targets

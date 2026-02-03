@@ -56,20 +56,21 @@
 
 ```
 l1-ingestion/
-├── cmd/                    # Binary entry points (one per provider)
+├── cmd/                    # Binary entry points (one per provider + orchestrator)
 │   ├── gdelt/main.go
 │   ├── fred/main.go
 │   ├── binance/main.go
 │   ├── whalealert/main.go
 │   ├── cot/main.go
 │   ├── tradingeconomics/main.go
-│   └── telegram/main.go
+│   ├── telegram/main.go
+│   └── orchestrator/main.go # Unified manager for all providers
 ├── internal/
 │   ├── provider/           # Provider interface + implementations
 │   │   ├── provider.go     # Core interface: Provider, HealthStatus, ProviderConfig
 │   │   ├── base.go         # BaseProvider with common logic (Emit, Health, etc.)
 │   │   ├── errors.go       # ErrNoHandlers, ProviderError
-│   │   ├── registry.go     # Provider registry (unused currently)
+│   │   ├── registry.go     # Provider registry (used by orchestrator)
 │   │   ├── gdelt/          # GDELT GKG 2.0 provider
 │   │   ├── fred/           # FRED API provider
 │   │   ├── binance/        # Binance WebSocket provider
@@ -77,6 +78,12 @@ l1-ingestion/
 │   │   ├── cot/            # CME COT reports provider
 │   │   ├── tradingeconomics/ # Trading Economics provider
 │   │   └── telegram/       # Telegram Bot API provider
+│   ├── orchestrator/       # Provider lifecycle management
+│   │   └── orchestrator.go # Orchestrator with supervision, rate limiting, circuit breakers
+│   ├── ratelimit/          # Rate limiting
+│   │   └── limiter.go      # Token bucket + keyed limiter
+│   ├── circuit/            # Circuit breaker
+│   │   └── breaker.go      # Closed/open/half-open states
 │   ├── signal/             # Signal domain model
 │   │   ├── signal.go       # Signal struct, validation, JSON methods
 │   │   ├── builder.go      # Builder pattern for creating signals
@@ -313,6 +320,9 @@ make build
 # Build specific provider
 make build-gdelt
 
+# Build orchestrator (manages all providers)
+make build-orchestrator
+
 # Run tests
 make test
 go test ./... -v
@@ -322,6 +332,13 @@ make test-coverage
 
 # Run specific provider locally
 make run-gdelt
+
+# Run orchestrator (all providers in one process)
+make run-orchestrator
+# Or with specific providers:
+L1_ORCHESTRATOR_PROVIDERS=gdelt,binance make run-orchestrator
+# Enable supervision (auto-restart unhealthy providers):
+L1_ORCHESTRATOR_SUPERVISION=true make run-orchestrator
 
 # Start infrastructure (Kafka, Redis, Prometheus)
 make docker-up
@@ -398,12 +415,11 @@ None currently.
 
 ### Medium Priority
 1. **No Integration Tests**: `test-integration` target exists but no tests written
-2. **Missing Orchestrator**: Plan included `cmd/orchestrator/` for lifecycle management
 
 ### Low Priority / Deviations from Plan
-3. **Naming**: Plan used `sensor-*` prefix, implementation uses just provider name
-4. **Directory**: Plan had `internal/providers/` (plural), actual is `internal/provider/<name>/`
-5. **Signals Channel**: Plan used channels, implementation uses callback handlers
+2. **Naming**: Plan used `sensor-*` prefix, implementation uses just provider name
+3. **Directory**: Plan had `internal/providers/` (plural), actual is `internal/provider/<name>/`
+4. **Signals Channel**: Plan used channels, implementation uses callback handlers
 
 ### Resolved
 - ✅ All 7 providers now have unit tests (binance, fred added Feb 2025)
@@ -414,6 +430,7 @@ None currently.
 - ✅ Package tests added for `internal/config`, `internal/health`, `internal/kafka`
 - ✅ Rate limiter implemented (`internal/ratelimit/`) with token bucket + keyed limiter
 - ✅ Circuit breaker implemented (`internal/circuit/`) with closed/open/half-open states
+- ✅ Orchestrator implemented (`internal/orchestrator/`, `cmd/orchestrator/`) for lifecycle management
 
 ---
 

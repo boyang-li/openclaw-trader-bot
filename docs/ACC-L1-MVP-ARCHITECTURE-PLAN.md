@@ -193,8 +193,9 @@ l1-ingestion/
 | Wave 6 | Observability (Grafana dashboards) | ✅ COMPLETE |
 | Wave 7 | FRED Provider | ✅ COMPLETE |
 | Wave 7.5 | Telegram Ingestor | ✅ COMPLETE |
-| Wave 8 | Paid Providers (Whale Alert, Trading Economics) | ⏸️ DEFERRED |
-| Wave 9 | Snowflake Integration | ⏸️ DEFERRED |
+| Wave 8 | Orchestrator (unified provider management) | ✅ COMPLETE |
+| Wave 9 | Kubernetes manifests, CI/CD pipeline | ⏸️ DEFERRED |
+| Wave 10 | Snowflake Integration | ⏸️ DEFERRED |
 
 ### Higher Layers (Specified, Not Implemented)
 

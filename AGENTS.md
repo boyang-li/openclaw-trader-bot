@@ -23,6 +23,7 @@ Before working on this codebase, read these critical files:
 ✅ SLM Worker        - Signal enrichment via Qwen 2.5-1.5B-Instruct
 ✅ Alerter           - Telegram notifications for high-priority signals
 ✅ Persister  (8088) - SQLite storage with Query API
+✅ Orchestrator      - Unified provider lifecycle management with supervision
 ⏸️ Whale Alert      - Requires paid API key
 ⏸️ TradingEcon      - Requires paid API key
 📋 L2 Reasoner      - Specified (docs/L2_L3_SPEC.md)
@@ -107,6 +108,30 @@ def should_alert(signal: dict) -> bool:
 ```
 
 ---
+
+### 🎛️ Orchestrator-Dev (System Integration Development)
+
+**Responsibility**: Building and maintaining the orchestrator system for unified provider management
+
+**Skills Required**:
+- Go concurrency patterns (goroutines, channels, context)
+- Circuit breaker patterns
+- Rate limiting algorithms
+- Health monitoring and supervision
+- Kafka producer integration
+
+**Typical Tasks**:
+- Enhance orchestrator supervision logic
+- Add new provider integrations
+- Optimize rate limiting and circuit breaking
+- Add monitoring and metrics
+- Improve graceful shutdown handling
+
+**Before Starting Work**:
+1. Read `internal/orchestrator/orchestrator.go` (core implementation)
+2. Read `internal/circuit/breaker.go` (circuit breaker pattern)
+3. Read `internal/ratelimit/limiter.go` (rate limiting implementation)
+4. Review `cmd/orchestrator/main.go` (entry point)
 
 ### 📊 Data-Dev (Snowflake/dbt Development)
 

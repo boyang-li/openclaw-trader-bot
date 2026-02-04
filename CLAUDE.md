@@ -2,7 +2,7 @@
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
 > **Last Updated**: 2026-02-03
-> **Status**: Wave 7.5 Complete (Telegram Ingestor Running)
+> **Status**: Wave 8 Complete (Orchestrator Implemented)
 
 ---
 
@@ -734,10 +734,28 @@ for _, f := range zipReader.File {
   - `L1_TELEGRAM_POLL_INTERVAL`: Polling interval (default: 5s)
 - **Note**: Bot must be added to channels/groups to receive messages. To get channel IDs, forward a message to @userinfobot on Telegram.
 
-## Future Work (Wave 8+)
+### Wave 8: Orchestrator ✅
+- **Unified provider management** with lifecycle supervision
+- **Features**:
+  - **Supervision**: Auto-restart for unhealthy providers with configurable thresholds
+  - **Rate limiting**: Global and per-provider rate limiting via token bucket algorithm
+  - **Circuit breaking**: Per-provider circuit breakers with closed/open/half-open states
+  - **Health monitoring**: Centralized health status for all providers
+  - **Graceful shutdown**: Coordinated shutdown with timeout handling
+  - **Provider registry**: Dynamic provider registration and discovery
+- **Configuration**:
+  - `L1_ORCHESTRATOR_SUPERVISION=true` enables auto-restart
+  - `L1_ORCHESTRATOR_PROVIDERS=gdelt,binance,fred` comma-separated provider list
+- **Commands**:
+  - `make build-orchestrator` builds the orchestrator binary
+  - `make run-orchestrator` runs all providers in a single process
+  - `L1_ORCHESTRATOR_PROVIDERS=gdelt,binance make run-orchestrator` runs specific providers
+- **Health endpoint**: `/health` endpoint shows orchestrator and provider status
 
-- **Wave 8**: Paid providers (Whale Alert, Trading Economics) when needed
+## Future Work (Wave 9+)
+
 - **Wave 9**: Kubernetes manifests, CI/CD pipeline
+- **Wave 10**: L2 Reasoning layer implementation
 
 ---
 

@@ -78,6 +78,9 @@ services:
         rpk topic create l1.signals.enriched --brokers redpanda:9092 --partitions 6 --config retention.ms=604800000 || true
         rpk topic create l1.signals.filtered --brokers redpanda:9092 --partitions 3 --config retention.ms=2592000000 || true
         rpk topic create l1.signals.dlq --brokers redpanda:9092 --partitions 1 --config retention.ms=2592000000 || true
+        rpk topic create l2.insights --brokers redpanda:9092 --partitions 6 --config retention.ms=604800000 --config cleanup.policy=delete || true
+        rpk topic create l2.situations --brokers redpanda:9092 --partitions 3 --config retention.ms=2592000000 --config cleanup.policy=compact || true
+        rpk topic create l2.entities --brokers redpanda:9092 --partitions 6 --config retention.ms=-1 --config cleanup.policy=compact || true
         echo 'Topics created:'
         rpk topic list --brokers redpanda:9092
     networks:
@@ -180,30 +183,6 @@ services:
     networks:
       - l1-network
 
-  # Telegram - Channel/Group Message Monitoring (Geopolitical/Crypto/Macro)
-  telegram-ingestor:
-    build:
-      context: ..
-      dockerfile: deploy/docker/Dockerfile.provider
-      args:
-        PROVIDER: telegram
-    container_name: l1-telegram
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    environment:
-      - L1_KAFKA_BROKERS=redpanda:9092
-      - L1_KAFKA_TOPIC_RAW=l1.signals.raw
-      - L1_TELEGRAM_BOT_TOKEN=${TELEGRAM_INGESTOR_BOT_TOKEN:?TELEGRAM_INGESTOR_BOT_TOKEN is required}
-      - L1_TELEGRAM_CHAT_IDS=${TELEGRAM_INGESTOR_CHAT_IDS:-}
-      - L1_TELEGRAM_ENABLED=${TELEGRAM_INGESTOR_ENABLED:-true}
-      - L1_TELEGRAM_POLL_INTERVAL=${TELEGRAM_POLL_INTERVAL:-5s}
-      - L1_LOG_LEVEL=${LOG_LEVEL:-info}
-    ports:
-      - "8087:8080"
-    restart: unless-stopped
-    networks:
-      - l1-network
 
   # ===========================================================================
   # Python SLM Worker (Signal Enrichment)
@@ -263,6 +242,9 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - DISCORD_ENABLED=${DISCORD_ENABLED:-false}
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - L2_ALERTS_ENABLED=${L2_ALERTS_ENABLED:-false}
+      - L2_INSIGHTS_TOPIC=${L2_INSIGHTS_TOPIC:-l2.insights}
+      - L2_MIN_SEVERITY=${L2_MIN_SEVERITY:-warning}
       - DRY_RUN=${ALERTER_DRY_RUN:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
@@ -300,6 +282,49 @@ services:
       - "8088:8080"
     volumes:
       - persister-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ===========================================================================
+  # L2 Reasoner (Correlation + Entity Tracking)
+  # ===========================================================================
+  l2-reasoner:
+    build:
+      context: ../python
+      dockerfile: l2_reasoner/Dockerfile
+    container_name: l2-reasoner
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - L2_KAFKA_BROKERS=redpanda:9092
+      - L2_KAFKA_INPUT_TOPIC=l1.signals.enriched
+      - L2_KAFKA_CONSUMER_GROUP=l2-reasoner
+      - L2_OUTPUT_INSIGHTS_TOPIC=l2.insights
+      - L2_OUTPUT_SITUATIONS_TOPIC=l2.situations
+      - L2_OUTPUT_ENTITIES_TOPIC=l2.entities
+      - L2_KAFKA_DLQ_TOPIC=l1.signals.dlq
+      - L2_DB_PATH=/data/l2_reasoner.db
+      - L2_CORRELATION_WINDOW_HOURS=${L2_CORRELATION_WINDOW_HOURS:-4}
+      - L2_ANOMALY_ZSCORE_THRESHOLD=${L2_ANOMALY_ZSCORE_THRESHOLD:-2.5}
+      - L2_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - L2_METRICS_PORT=8080
+      - L2_HEALTH_PORT=8080
+    ports:
+      - "8089:8080"
+    volumes:
+      - l2-reasoner-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -396,3 +421,4 @@ volumes:
   redis-data:
   huggingface-cache:
   persister-data:
+  l2-reasoner-data:

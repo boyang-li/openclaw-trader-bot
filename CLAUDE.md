@@ -1,14 +1,14 @@
 # CLAUDE.md - L1 Ingestion Module
 
 > **Purpose**: Long-term memory for AI assistants working on this codebase.
-> **Last Updated**: 2026-02-03
-> **Status**: Wave 8 Complete (Orchestrator Implemented)
+> **Last Updated**: 2026-02-04
+> **Status**: Wave 8.5 Complete (L2 Reasoner + Alerting Upgrade)
 
 ---
 
 ## Project Overview
 
-**L1-Ingestion** is a Go-based real-time signal ingestion layer for the ACC (Autonomous Cognitive Core) system. It collects geopolitical, macroeconomic, and crypto signals from multiple data sources and publishes them to Redpanda (Kafka-compatible) for downstream processing.
+**L1-Ingestion** is a Go-based real-time signal ingestion layer for the ACC (Autonomous Cognitive Core) system. It collects geopolitical, macroeconomic, community, and crypto signals from multiple data sources and publishes them to Redpanda (Kafka-compatible) for downstream processing. The downstream Python stack (SLM worker → Persister → L2 Reasoner → Alerter) now produces both enriched L1 events and higher-order L2 insights that reach the Telegram/Discord channels.
 
 ### Tech Stack
 | Component | Technology |
@@ -40,15 +40,16 @@
 ### Python Processing Services
 | Service | Description | Status |
 |---------|-------------|--------|
-| SLM Worker | Signal enrichment via Qwen 2.5-1.5B | ✅ Running |
-| Alerter | Telegram/Discord notifications | ✅ Running |
-| Persister | SQLite storage with Query API | ✅ Running |
+| SLM Worker | Enriches `l1.signals.raw` via Qwen 2.5-1.5B → `l1.signals.enriched` | ✅ Running |
+| Alerter | Sends Telegram/Discord notifications for ACC L1 Signals + optional L2 Insights | ✅ Running |
+| Persister | Stores enriched signals to SQLite (snappy-enabled consumer) + Query API (:8088) | ✅ Running |
+| L2 Reasoner | Correlates enriched signals into insights/entities (`l2.insights`, `l2.situations`, `l2.entities`) | ✅ Running |
 
 ### Observability Stack
 | Service | Port | Description | Status |
 |---------|------|-------------|--------|
-| Prometheus | 9090 | Metrics collection | ✅ Running |
-| Grafana | 3000 | Dashboards (admin/admin) | ✅ Running |
+| Prometheus | 9090 | Metrics collection (providers, Python services, L2 reasoner) | ✅ Running |
+| Grafana | 3000 | Dashboards (L1 overview, Redpanda, providers, **new L2 reasoner board**) | ✅ Running |
 
 ---
 
@@ -107,21 +108,28 @@ l1-ingestion/
 │   │   └── config.py       # Environment configuration
 │   ├── alerter/            # Alert notification service
 │   │   ├── __init__.py
-│   │   ├── main.py         # Kafka consumer loop
+│   │   ├── main.py         # Kafka consumer (l1 + optional l2 topics)
 │   │   ├── filter.py       # Alert filtering rules
-│   │   ├── notifier.py     # Telegram/Discord senders
-│   │   ├── config.py       # Environment configuration
+│   │   ├── notifier.py     # Telegram/Discord senders (L1 vs L2 templates)
+│   │   ├── config.py       # Environment configuration (`L2_ALERTS_ENABLED`, etc.)
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
 │   ├── persister/          # Signal persistence service
 │   │   ├── __init__.py
-│   │   ├── main.py         # Kafka consumer loop
+│   │   ├── main.py         # Kafka consumer loop (snappy-enabled)
 │   │   ├── database.py     # SQLite manager with schema
-│   │   ├── api.py          # HTTP query API
+│   │   ├── api.py          # HTTP query API (:8088)
 │   │   ├── config.py       # Environment configuration
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
-│   ├── requirements.txt    # SLM worker dependencies
+│   ├── l2_reasoner/        # L2 insight & entity engine
+│   │   ├── __init__.py
+│   │   ├── main.py         # Consume `l1.signals.enriched`, emit `l2.*`
+│   │   ├── engine/         # Correlation, rules, entity tracking
+│   │   ├── storage/        # SQLite state/cache
+│   │   ├── config.py
+│   │   └── requirements.txt
+│   ├── requirements.txt    # Shared Python deps
 │   └── Dockerfile          # SLM worker Docker build
 ├── deploy/
 │   ├── docker-compose.yml  # Redpanda, providers, Python services, monitoring
@@ -143,7 +151,8 @@ l1-ingestion/
 ├── docs/
 │   ├── ACC-L1-MVP-ARCHITECTURE-PLAN.md
 │   ├── L2_L3_SPEC.md             # L2 Reasoning + L3 Decision specs
-│   └── L4_SPEC.md                # L4 Paper Trading + Strategy Allocation
+│   ├── L4_SPEC.md                # L4 Paper Trading + Strategy Allocation
+│   └── oracle_provider_research.md # Low-cost provider options (Oracle, 2026-02)
 ├── bin/                    # Compiled binaries (gitignored)
 ├── Makefile               # Build automation
 ├── go.mod / go.sum
@@ -404,6 +413,26 @@ L1_TELEGRAM_CHAT_IDS=-1001234567890,-1009876543210
 L1_TELEGRAM_KEYWORDS=bitcoin,fed,inflation
 L1_TELEGRAM_POLL_INTERVAL=5s
 L1_TELEGRAM_ENABLED=true
+
+# Alerter (L1 + optional L2 alerts)
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=bot-token
+TELEGRAM_CHAT_ID=-1001234567890
+DISCORD_ENABLED=false
+L2_ALERTS_ENABLED=true
+L2_INSIGHTS_TOPIC=l2.insights
+L2_MIN_SEVERITY=warning
+ALERTER_DRY_RUN=false
+
+# L2 Reasoner
+L2_KAFKA_BROKERS=redpanda:9092
+L2_KAFKA_INPUT_TOPIC=l1.signals.enriched
+L2_OUTPUT_INSIGHTS_TOPIC=l2.insights
+L2_OUTPUT_SITUATIONS_TOPIC=l2.situations
+L2_OUTPUT_ENTITIES_TOPIC=l2.entities
+L2_DB_PATH=/data/l2_reasoner.db
+L2_CORRELATION_WINDOW_HOURS=4
+L2_ANOMALY_ZSCORE_THRESHOLD=2.5
 ```
 
 ---

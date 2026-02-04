@@ -1,7 +1,7 @@
 # ACC-L1 Ingestion Layer: MVP Architecture Plan
 
 > **Version**: 2.0  
-> **Date**: 2025-02-02  
+> **Date**: 2026-02-04  
 > **Status**: REVISED - Cost-Optimized Containerized Deployment
 
 ---
@@ -25,18 +25,19 @@ This plan delivers a **fully containerized, cost-efficient Go-based sensor archi
 |-----------|------------|------|
 | **Ingestors** | Go (containerized) | $0 |
 | **Message Broker** | Redpanda (self-hosted) | $0 |
-| **Edge Processing** | Python SLM (Qwen 2.5-1.5B) | $0 |
-| **Persistence** | SQLite / DuckDB | $0 |
-| **Alerting** | Telegram Bot API | $0 |
-| **Observability** | Prometheus + Grafana | $0 |
+| **Edge Processing** | Python SLM (Qwen 2.5-1.5B) + L2 Reasoner (correlation/entity engine) | $0 |
+| **Persistence** | SQLite (Persister w/ snappy-enabled Kafka consumer) / DuckDB (later) | $0 |
+| **Alerting** | Telegram Bot API (ACC L1 Signals + L2 Insights) | $0 |
+| **Observability** | Prometheus + Grafana (includes L2 reasoner dashboard) | $0 |
 
 ### Data Sources (MVP)
-| Category | Sources | Cost |
-|----------|---------|------|
-| **Geopolitical** | GDELT (GKG 2.0) | FREE |
-| **Macro** | FRED, CME COT | FREE |
-| **Crypto** | Binance WebSocket | FREE |
-| **Deferred** | Whale Alert, Trading Economics, Telegram Ingestion | PAID (later) |
+| Category | Sources | Cost | Status |
+|----------|---------|------|--------|
+| **Geopolitical** | GDELT (GKG 2.0) | FREE | ✅ Running |
+| **Macro** | FRED API, CME COT archives | FREE | ✅ Running |
+| **Crypto** | Binance WebSocket (large trade monitor) | FREE | ✅ Running |
+| **Community / Messaging** | Telegram channel/group ingestion | FREE (bot token) | ✅ Running |
+| **Deferred** | Whale Alert, Trading Economics, paid news feeds | PAID | ⏸️ Planned |
 
 ---
 
@@ -81,8 +82,23 @@ This plan delivers a **fully containerized, cost-efficient Go-based sensor archi
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
-                            📱 Telegram Alerts
+📱 Telegram Alerts
 ```
+
+### Updated Signal Flow (2026)
+1. **Go Providers** emit raw semantic signals to `l1.signals.raw`.
+2. **Python SLM Worker** (Qwen 2.5) enriches each signal and publishes to `l1.signals.enriched`.
+3. **Persister** consumes the enriched topic (snappy-enabled Kafka consumer) and writes to SQLite for historical queries.
+4. **L2 Reasoner** ingests the same enriched stream, performs correlation/entity tracking, and emits derived insights to `l2.insights` (with planned `l2.situations` / `l2.entities`).
+5. **Alerter** now consumes **both** `l1.signals.enriched` (high-urgency L1 events) and, when `L2_ALERTS_ENABLED=true`, `l2.insights`, formatting Telegram/Discord messages with a clear layer prefix ("ACC L1 Signal" vs "ACC L2 Insight").
+6. **Grafana + Prometheus** monitor Redpanda, providers, SLM worker, L2 reasoner, and alert delivery health, including a dedicated L2 dashboard (`deploy/grafana/dashboards/l2-reasoner.json`).
+
+## Recent Enhancements (2026-02)
+- **L2 Reasoner Service** (`python/l2_reasoner`) now ships with Docker support, SQLite-backed state, and emits `l2.insights` that the alerter can forward.
+- **Alerter** consumes both `l1.signals.enriched` and (optionally) `l2.insights`, tagging messages with "ACC L1 Signal" or "ACC L2 Insight" for clarity; new env vars `L2_ALERTS_ENABLED`, `L2_INSIGHTS_TOPIC`, `L2_MIN_SEVERITY` control behavior.
+- **Persister** container includes `libsnappy` + `python-snappy`, allowing it to ingest compressed Kafka batches without crashes.
+- **Grafana** now includes `deploy/grafana/dashboards/l2-reasoner.json` for monitoring L2 throughput, correlation windows, and insight generation.
+- **docs/oracle_provider_research.md** captures Oracle’s shortlist of low-cost complementary data providers for future sensors.
 
 ### Portability
 
@@ -132,13 +148,30 @@ l1-ingestion/
 │   │   ├── main.py
 │   │   ├── processor.py
 │   │   └── config.py
-│   ├── alerter/                  # NEW: Telegram alerter
+│   ├── alerter/                  # ACC alerts (L1 signals + L2 insights)
 │   │   ├── __init__.py
-│   │   ├── main.py
-│   │   ├── telegram_bot.py
-│   │   └── filters.py
-│   ├── requirements.txt
-│   └── Dockerfile
+│   │   ├── main.py               # Kafka consumer (l1 + optional l2 topics)
+│   │   ├── filter.py             # Alert filtering rules
+│   │   ├── notifier.py           # Telegram/Discord templates w/ layer prefix
+│   │   ├── config.py
+│   │   └── requirements.txt
+│   ├── persister/                # Signal persistence service
+│   │   ├── __init__.py
+│   │   ├── main.py               # Kafka consumer loop (snappy-enabled)
+│   │   ├── database.py           # SQLite schema & inserts
+│   │   ├── api.py                # HTTP query API (:8088)
+│   │   ├── config.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   ├── l2_reasoner/              # NEW: Insight/correlation engine (L2)
+│   │   ├── __init__.py
+│   │   ├── main.py               # Ingest l1.signals.enriched → emit l2.insights/situations/entities
+│   │   ├── engine/               # Correlation, entity tracker, rules
+│   │   ├── storage/              # SQLite models/cache
+│   │   ├── config.py
+│   │   └── requirements.txt
+│   ├── requirements.txt          # Shared Python deps (if any)
+│   └── Dockerfile                # SLM worker Docker build
 │
 ├── deploy/                        # Deployment configs
 │   ├── docker/
@@ -165,7 +198,8 @@ l1-ingestion/
 ├── docs/
 │   ├── ACC-L1-MVP-ARCHITECTURE-PLAN.md
 │   ├── L2_L3_SPEC.md              # L2 Reasoning + L3 Decision specs
-│   └── L4_SPEC.md                 # L4 Paper Trading + Strategy Allocation
+│   ├── L4_SPEC.md                 # L4 Paper Trading + Strategy Allocation
+│   └── oracle_provider_research.md # Low-cost provider options (Oracle, 2026-02)
 │
 ├── CLAUDE.md                      # AI assistant memory
 ├── AGENTS.md                      # Agent workflow guidelines
@@ -194,6 +228,7 @@ l1-ingestion/
 | Wave 7 | FRED Provider | ✅ COMPLETE |
 | Wave 7.5 | Telegram Ingestor | ✅ COMPLETE |
 | Wave 8 | Orchestrator (unified provider management) | ✅ COMPLETE |
+| Wave 8.5 | L2 Reasoner service + Grafana dashboard + alerter integration | ✅ COMPLETE |
 | Wave 9 | Kubernetes manifests, CI/CD pipeline | ⏸️ DEFERRED |
 | Wave 10 | Snowflake Integration | ⏸️ DEFERRED |
 
@@ -201,7 +236,7 @@ l1-ingestion/
 
 | Layer | Specification | Status |
 |-------|---------------|--------|
-| L2 Reasoning | `docs/L2_L3_SPEC.md` | 📋 Specified |
+| L2 Reasoning | `docs/L2_L3_SPEC.md` | ✅ Running (python/l2_reasoner) |
 | L3 Decision/Execution | `docs/L2_L3_SPEC.md` | 📋 Specified |
 | L4 Paper Trading | `docs/L4_SPEC.md` | 📋 Specified |
 

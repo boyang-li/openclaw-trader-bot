@@ -19,6 +19,7 @@ BINARIES := gdelt fred binance whalealert cot tradingeconomics telegram orchestr
 .PHONY: all build clean test lint fmt help
 .PHONY: build-gdelt build-fred build-binance build-whalealert build-cot build-tradingeconomics build-telegram build-orchestrator
 .PHONY: run-gdelt run-fred run-binance run-whalealert run-cot run-tradingeconomics run-telegram run-orchestrator
+.PHONY: build-l2-reasoner run-l2-reasoner
 .PHONY: docker-build docker-up docker-down docker-logs
 .PHONY: test-coverage test-integration
 .PHONY: deps tidy verify
@@ -120,6 +121,14 @@ run-telegram:
 run-orchestrator:
 	$(GO) run $(GOFLAGS) ./cmd/orchestrator
 
+## build-l2-reasoner: Build L2 Reasoner Docker image
+build-l2-reasoner:
+	docker build -f python/l2_reasoner/Dockerfile -t $(DOCKER_REGISTRY)/l2-reasoner:$(VERSION) ./python
+
+## run-l2-reasoner: Run L2 Reasoner locally
+run-l2-reasoner:
+	PYTHONPATH=python python -m l2_reasoner.main
+
 # ============================================================================
 # Test targets
 # ============================================================================
@@ -177,10 +186,16 @@ tidy:
 ## docker-build: Build all Docker images
 docker-build:
 	@echo "Building Docker images..."
-	docker build -f deploy/docker/Dockerfile.gdelt -t $(DOCKER_REGISTRY)/l1-gdelt:$(VERSION) .
-	docker build -f deploy/docker/Dockerfile.fred -t $(DOCKER_REGISTRY)/l1-fred:$(VERSION) .
-	docker build -f deploy/docker/Dockerfile.binance -t $(DOCKER_REGISTRY)/l1-binance:$(VERSION) .
-	docker build -f deploy/docker/Dockerfile.slm -t $(DOCKER_REGISTRY)/l1-slm:$(VERSION) .
+	docker build -f deploy/docker/Dockerfile.provider --build-arg PROVIDER=gdelt -t $(DOCKER_REGISTRY)/l1-gdelt:$(VERSION) .
+	docker build -f deploy/docker/Dockerfile.provider --build-arg PROVIDER=fred -t $(DOCKER_REGISTRY)/l1-fred:$(VERSION) .
+	docker build -f deploy/docker/Dockerfile.provider --build-arg PROVIDER=binance -t $(DOCKER_REGISTRY)/l1-binance:$(VERSION) .
+	docker build -f deploy/docker/Dockerfile.provider --build-arg PROVIDER=cot -t $(DOCKER_REGISTRY)/l1-cot:$(VERSION) .
+	# Build Python services
+	docker build -f python/Dockerfile -t $(DOCKER_REGISTRY)/l1-slm-worker:$(VERSION) ./python
+	docker build -f python/alerter/Dockerfile -t $(DOCKER_REGISTRY)/l1-alerter:$(VERSION) ./python
+	docker build -f python/persister/Dockerfile -t $(DOCKER_REGISTRY)/l1-persister:$(VERSION) ./python
+	# Build L2 Reasoner
+	docker build -f python/l2_reasoner/Dockerfile -t $(DOCKER_REGISTRY)/l2-reasoner:$(VERSION) ./python
 
 ## docker-up: Start Docker Compose stack
 docker-up:

@@ -96,25 +96,50 @@ scrape_configs:
     scrape_interval: 10s
 
   # ===========================================================================
-  # Python Services (future)
+  # Python Services
   # ===========================================================================
-  # - job_name: 'l1-slm-worker'
-  #   static_configs:
-  #     - targets: ['slm-worker:8080']
-  #       labels:
-  #         service: 'slm-worker'
-  #         category: 'processing'
-  #   metrics_path: '/metrics'
-  #   scrape_interval: 10s
+  - job_name: 'l1-slm-worker'
+    static_configs:
+      - targets: ['slm-worker:8080']
+        labels:
+          service: 'slm-worker'
+          category: 'processing'
+          layer: 'l1'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
 
-  # - job_name: 'l1-telegram-alerter'
-  #   static_configs:
-  #     - targets: ['telegram-alerter:8080']
-  #       labels:
-  #         service: 'telegram-alerter'
-  #         category: 'alerting'
-  #   metrics_path: '/metrics'
-  #   scrape_interval: 10s
+  - job_name: 'l1-telegram-alerter'
+    static_configs:
+      - targets: ['telegram-alerter:8080']
+        labels:
+          service: 'telegram-alerter'
+          category: 'alerting'
+          layer: 'l1'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  - job_name: 'l1-persister'
+    static_configs:
+      - targets: ['persister:8080']
+        labels:
+          service: 'persister'
+          category: 'storage'
+          layer: 'l1'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # ===========================================================================
+  # L2 Reasoner Service
+  # ===========================================================================
+  - job_name: 'l2-reasoner'
+    static_configs:
+      - targets: ['l2-reasoner:8080']
+        labels:
+          service: 'l2-reasoner'
+          category: 'reasoning'
+          layer: 'l2'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
 
   # ===========================================================================
   # Redis Metrics (optional - requires redis-exporter sidecar)

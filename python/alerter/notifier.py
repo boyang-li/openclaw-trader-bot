@@ -1,7 +1,8 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 from datetime import datetime
 import aiohttp
 from aiohttp import ClientTimeout
@@ -11,16 +12,24 @@ from .config import TelegramConfig, DiscordConfig
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class AlertEnvelope:
+    kind: Literal["l1_signal", "l2_insight"]
+    data: dict[str, Any]
+    reasons: list[str]
+
+
 class Notifier(ABC):
     @abstractmethod
-    async def send(self, signal: dict[str, Any], reasons: list[str]) -> bool:
+    async def send(self, alert: AlertEnvelope) -> bool:
         pass
 
-    def format_signal_message(self, signal: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
+    def build_signal_context(self, signal: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
         enrichment = signal.get("enrichment", {}) or {}
         raw_data = signal.get("raw_data", {}) or {}
         
         return {
+            "layer_title": "ACC L1 Signal",
             "subject": signal.get("subject", "Unknown"),
             "action": signal.get("action", "Unknown"),
             "source": signal.get("source", "Unknown"),
@@ -33,6 +42,29 @@ class Notifier(ABC):
             "timestamp": signal.get("timestamp", ""),
             "reasons": reasons,
             "raw_data": raw_data,
+        }
+
+    def build_insight_context(self, insight: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
+        trigger_signals = insight.get("trigger_signals") or []
+        metrics = insight.get("metrics") or {}
+        context = insight.get("context") or {}
+        metadata = insight.get("metadata") or {}
+        
+        return {
+            "layer_title": "ACC L2 Insight",
+            "id": insight.get("id", "unknown"),
+            "title": insight.get("title", "Unknown insight"),
+            "type": insight.get("type", "unknown"),
+            "severity": insight.get("severity", "info"),
+            "description": insight.get("description", ""),
+            "entities": insight.get("entities", []) or [],
+            "categories": insight.get("categories", []) or [],
+            "metrics": metrics,
+            "context": context,
+            "metadata": metadata,
+            "trigger_signals": trigger_signals,
+            "reasons": reasons,
+            "timestamp": insight.get("timestamp", metadata.get("created_at", "")),
         }
 
 
@@ -58,17 +90,28 @@ class TelegramNotifier(Notifier):
         "highly_negative": "🚨",
     }
 
+    SEVERITY_EMOJI = {
+        "info": "ℹ️",
+        "warning": "⚠️",
+        "alert": "🚨",
+        "critical": "🛑",
+    }
+
     def __init__(self, config: TelegramConfig):
         self.config = config
         self.api_url = f"https://api.telegram.org/bot{config.bot_token}/sendMessage"
 
-    async def send(self, signal: dict[str, Any], reasons: list[str]) -> bool:
+    async def send(self, alert: AlertEnvelope) -> bool:
         if not self.config.is_configured():
             logger.warning("Telegram not configured, skipping notification")
             return False
 
-        msg = self.format_signal_message(signal, reasons)
-        text = self._format_telegram_message(msg)
+        if alert.kind == "l1_signal":
+            msg = self.build_signal_context(alert.data, alert.reasons)
+            text = self._format_signal_message(msg)
+        else:
+            msg = self.build_insight_context(alert.data, alert.reasons)
+            text = self._format_insight_message(msg)
         
         payload = {
             "chat_id": self.config.chat_id,
@@ -82,20 +125,19 @@ class TelegramNotifier(Notifier):
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(self.api_url, json=payload) as resp:
                     if resp.status == 200:
-                        logger.info(f"Telegram alert sent for {msg['subject']}")
+                        logger.info("Telegram alert sent for %s", msg.get("subject", msg.get("title", "unknown")))
                         return True
-                    else:
-                        body = await resp.text()
-                        logger.error(f"Telegram API error {resp.status}: {body}")
-                        return False
+                    body = await resp.text()
+                    logger.error("Telegram API error %s: %s", resp.status, body)
+                    return False
         except asyncio.TimeoutError:
             logger.error("Telegram API timeout")
             return False
-        except Exception as e:
-            logger.error(f"Telegram send error: {e}")
+        except Exception as exc:
+            logger.error("Telegram send error: %s", exc)
             return False
 
-    def _format_telegram_message(self, msg: dict[str, Any]) -> str:
+    def _format_signal_message(self, msg: dict[str, Any]) -> str:
         urgency_emoji = self.URGENCY_EMOJI.get(msg["urgency"], "⚪")
         sentiment_val = msg["sentiment"]
         sentiment_emoji = self.SENTIMENT_EMOJI["bullish"] if sentiment_val > 0.1 else (
@@ -104,7 +146,7 @@ class TelegramNotifier(Notifier):
         impact_emoji = self.IMPACT_EMOJI.get(msg["market_impact"], "➖")
         
         lines = [
-            f"{urgency_emoji} <b>ACC L1 Alert: {msg['subject'].upper()}</b>",
+            f"{urgency_emoji} <b>{msg['layer_title']}: {msg['subject'].upper()}</b>",
             "",
             f"<b>Action:</b> {msg['action']}",
             f"<b>Source:</b> {msg['source']} | <b>Category:</b> {msg['category']}",
@@ -142,6 +184,58 @@ class TelegramNotifier(Notifier):
             f"<i>{msg['timestamp'][:19] if msg['timestamp'] else 'N/A'}</i>",
         ])
         
+        return "\n".join(lines)
+
+    def _format_insight_message(self, msg: dict[str, Any]) -> str:
+        severity = msg["severity"].lower()
+        severity_emoji = self.SEVERITY_EMOJI.get(severity, "🧠")
+        lines = [
+            f"{severity_emoji} <b>{msg['layer_title']}: {msg['title']}</b>",
+            "",
+            f"<b>Type:</b> {msg['type']} | <b>Severity:</b> {msg['severity'].upper()}",
+        ]
+
+        if msg["categories"]:
+            lines.append(f"<b>Categories:</b> {', '.join(msg['categories'])}")
+        if msg["entities"]:
+            lines.append(f"<b>Entities:</b> {', '.join(msg['entities'])}")
+
+        metrics = msg["metrics"]
+        metric_bits: list[str] = []
+        if metrics:
+            if "correlation_score" in metrics:
+                metric_bits.append(f"Correlation {metrics['correlation_score']:.2f}")
+            if "confidence" in metrics:
+                metric_bits.append(f"Confidence {metrics['confidence']:.2f}")
+            if "signal_count" in metrics:
+                metric_bits.append(f"Signals {metrics['signal_count']}")
+            if "time_window_hours" in metrics:
+                metric_bits.append(f"Window {metrics['time_window_hours']:.2f}h")
+        if metric_bits:
+            lines.append("<b>Metrics:</b> " + ", ".join(metric_bits))
+
+        description = msg.get("description")
+        if description:
+            lines.extend(["", f"<b>Description:</b> {description[:600]}"])
+
+        triggers = msg["trigger_signals"]
+        if triggers:
+            lines.extend(["", "<b>Trigger Signals:</b>"])
+            for trigger in triggers[:5]:
+                source = trigger.get("source", "?")
+                weight = trigger.get("weight", 0.0)
+                signal_id = trigger.get("id", "")
+                lines.append(f"  • {source} ({weight:.0%}) {signal_id}")
+
+        lines.extend([
+            "",
+            f"<b>Insight notes:</b> {', '.join(msg['reasons']) or 'n/a'}",
+        ])
+
+        timestamp = msg.get("timestamp")
+        if timestamp:
+            lines.extend(["", f"<i>{timestamp[:19]}</i>"])
+
         return "\n".join(lines)
 
     def _format_binance_trade_details(self, raw_data: dict[str, Any]) -> list[str]:
@@ -237,16 +331,27 @@ class DiscordNotifier(Notifier):
         "critical": 0xFF0000,
     }
 
+    SEVERITY_COLOR = {
+        "info": 0x3498DB,
+        "warning": 0xF1C40F,
+        "alert": 0xE67E22,
+        "critical": 0xE74C3C,
+    }
+
     def __init__(self, config: DiscordConfig):
         self.config = config
 
-    async def send(self, signal: dict[str, Any], reasons: list[str]) -> bool:
+    async def send(self, alert: AlertEnvelope) -> bool:
         if not self.config.is_configured():
             logger.warning("Discord not configured, skipping notification")
             return False
 
-        msg = self.format_signal_message(signal, reasons)
-        embed = self._format_discord_embed(msg)
+        if alert.kind == "l1_signal":
+            msg = self.build_signal_context(alert.data, alert.reasons)
+            embed = self._build_signal_embed(msg)
+        else:
+            msg = self.build_insight_context(alert.data, alert.reasons)
+            embed = self._build_insight_embed(msg)
         
         payload = {"embeds": [embed]}
 
@@ -255,7 +360,8 @@ class DiscordNotifier(Notifier):
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(self.config.webhook_url, json=payload) as resp:
                     if resp.status in (200, 204):
-                        logger.info(f"Discord alert sent for {msg['subject']}")
+                        label = msg.get("subject") or msg.get("title") or "unknown"
+                        logger.info("Discord alert sent for %s", label)
                         return True
                     else:
                         body = await resp.text()
@@ -268,7 +374,7 @@ class DiscordNotifier(Notifier):
             logger.error(f"Discord send error: {e}")
             return False
 
-    def _format_discord_embed(self, msg: dict[str, Any]) -> dict[str, Any]:
+    def _build_signal_embed(self, msg: dict[str, Any]) -> dict[str, Any]:
         color = self.URGENCY_COLOR.get(msg["urgency"], 0x808080)
         
         fields = [
@@ -302,11 +408,62 @@ class DiscordNotifier(Notifier):
             fields.append({"name": "Summary", "value": msg["summary"][:1024], "inline": False})
         
         return {
-            "title": f"🔔 ACC L1 Alert: {msg['subject'].upper()}",
+            "title": f"🔔 {msg['layer_title']}: {msg['subject'].upper()}",
             "color": color,
             "fields": fields,
             "timestamp": datetime.utcnow().isoformat(),
             "footer": {"text": f"Confidence: {msg['confidence']:.0%}"},
+        }
+
+    def _build_insight_embed(self, msg: dict[str, Any]) -> dict[str, Any]:
+        color = self.SEVERITY_COLOR.get(msg["severity"].lower(), 0x95A5A6)
+        fields = [
+            {"name": "Type", "value": msg["type"], "inline": True},
+            {"name": "Severity", "value": msg["severity"].upper(), "inline": True},
+        ]
+
+        if msg["entities"]:
+            fields.append({"name": "Entities", "value": ", ".join(msg["entities"])[:1024], "inline": False})
+        if msg["categories"]:
+            fields.append({"name": "Categories", "value": ", ".join(msg["categories"])[:1024], "inline": False})
+
+        metrics = msg["metrics"]
+        if metrics:
+            metric_lines = []
+            if "correlation_score" in metrics:
+                metric_lines.append(f"Correlation {metrics['correlation_score']:.2f}")
+            if "confidence" in metrics:
+                metric_lines.append(f"Confidence {metrics['confidence']:.2f}")
+            if "signal_count" in metrics:
+                metric_lines.append(f"Signals {metrics['signal_count']}")
+            if "time_window_hours" in metrics:
+                metric_lines.append(f"Window {metrics['time_window_hours']:.2f}h")
+            if metric_lines:
+                fields.append({"name": "Metrics", "value": " | ".join(metric_lines), "inline": False})
+
+        triggers = msg["trigger_signals"]
+        if triggers:
+            trigger_lines = []
+            for trigger in triggers[:5]:
+                trigger_lines.append(
+                    f"{trigger.get('source','?')} ({trigger.get('weight',0):.0%}) — {trigger.get('id','')}"
+                )
+            fields.append({"name": "Trigger Signals", "value": "\n".join(trigger_lines), "inline": False})
+
+        if msg.get("description"):
+            fields.append({"name": "Description", "value": msg["description"][:1024], "inline": False})
+
+        if msg["reasons"]:
+            fields.append({"name": "Insight Notes", "value": ", ".join(msg["reasons"]), "inline": False})
+
+        timestamp = msg.get("timestamp") or datetime.utcnow().isoformat()
+
+        return {
+            "title": f"🧠 {msg['layer_title']}: {msg['title']}",
+            "color": color,
+            "fields": fields,
+            "timestamp": timestamp,
+            "footer": {"text": f"Insight ID: {msg['id']}"},
         }
 
     def _format_binance_trade_for_discord(self, raw_data: dict[str, Any]) -> str:
@@ -384,11 +541,18 @@ class DiscordNotifier(Notifier):
 
 
 class ConsoleNotifier(Notifier):
-    async def send(self, signal: dict[str, Any], reasons: list[str]) -> bool:
-        msg = self.format_signal_message(signal, reasons)
-        
+    async def send(self, alert: AlertEnvelope) -> bool:
+        if alert.kind == "l1_signal":
+            msg = self.build_signal_context(alert.data, alert.reasons)
+            self._log_signal(msg)
+        else:
+            msg = self.build_insight_context(alert.data, alert.reasons)
+            self._log_insight(msg)
+        return True
+
+    def _log_signal(self, msg: dict[str, Any]) -> None:
         logger.info("=" * 60)
-        logger.info(f"ALERT: {msg['subject']} - {msg['action']}")
+        logger.info(f"{msg['layer_title']}: {msg['subject']} - {msg['action']}")
         logger.info(f"Source: {msg['source']} | Category: {msg['category']}")
         logger.info(f"Urgency: {msg['urgency']} | Sentiment: {msg['sentiment']:+.2f}")
         logger.info(f"Market Impact: {msg['market_impact']}")
@@ -396,23 +560,34 @@ class ConsoleNotifier(Notifier):
         if msg["summary"]:
             logger.info(f"Summary: {msg['summary'][:200]}")
         logger.info("=" * 60)
-        
-        return True
+
+    def _log_insight(self, msg: dict[str, Any]) -> None:
+        logger.info("=" * 60)
+        logger.info(f"{msg['layer_title']}: {msg['title']}")
+        logger.info(f"Type: {msg['type']} | Severity: {msg['severity']}")
+        if msg["entities"]:
+            logger.info(f"Entities: {', '.join(msg['entities'])}")
+        if msg["categories"]:
+            logger.info(f"Categories: {', '.join(msg['categories'])}")
+        if msg.get("description"):
+            logger.info(f"Description: {msg['description'][:200]}")
+        logger.info(f"Reasons: {', '.join(msg['reasons'])}")
+        logger.info("=" * 60)
 
 
 class CompositeNotifier(Notifier):
     def __init__(self, notifiers: list[Notifier]):
         self.notifiers = notifiers
 
-    async def send(self, signal: dict[str, Any], reasons: list[str]) -> bool:
+    async def send(self, alert: AlertEnvelope) -> bool:
         if not self.notifiers:
             logger.warning("No notifiers configured")
             return False
 
-        tasks = [notifier.send(signal, reasons) for notifier in self.notifiers]
+        tasks = [notifier.send(alert) for notifier in self.notifiers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         successes = sum(1 for r in results if r is True)
-        logger.debug(f"Sent to {successes}/{len(self.notifiers)} notification channels")
+        logger.debug("Sent to %s/%s notification channels", successes, len(self.notifiers))
         
         return successes > 0

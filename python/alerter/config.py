@@ -134,6 +134,21 @@ class FilterConfig:
 
 
 @dataclass
+class InsightsConfig:
+    enabled: bool
+    topic: str
+    min_severity: str
+
+    @classmethod
+    def from_env(cls) -> "InsightsConfig":
+        return cls(
+            enabled=get_env_bool("L2_ALERTS_ENABLED", False),
+            topic=get_env("L2_INSIGHTS_TOPIC", "l2.insights"),
+            min_severity=get_env("L2_MIN_SEVERITY", "warning"),
+        )
+
+
+@dataclass
 class AppConfig:
     log_level: str
     worker_id: str
@@ -157,6 +172,7 @@ class Config:
     telegram: TelegramConfig
     discord: DiscordConfig
     filter: FilterConfig
+    insights: InsightsConfig
     app: AppConfig
 
     @classmethod
@@ -166,6 +182,7 @@ class Config:
             telegram=TelegramConfig.from_env(),
             discord=DiscordConfig.from_env(),
             filter=FilterConfig.from_env(),
+            insights=InsightsConfig.from_env(),
             app=AppConfig.from_env(),
         )
 
@@ -176,6 +193,12 @@ class Config:
         logger.info(f"Consumer group: {self.kafka.consumer_group}")
         logger.info(f"Telegram enabled: {self.telegram.enabled} (configured: {self.telegram.is_configured()})")
         logger.info(f"Discord enabled: {self.discord.enabled} (configured: {self.discord.is_configured()})")
+        logger.info(
+            "L2 alerts: enabled=%s topic=%s min_severity=%s",
+            self.insights.enabled,
+            self.insights.topic,
+            self.insights.min_severity,
+        )
         logger.info(f"Min urgency: {self.filter.min_urgency}")
         logger.info(f"Min sentiment magnitude: {self.filter.min_sentiment_magnitude}")
         logger.info(f"Alert market impacts: {self.filter.alert_market_impacts}")

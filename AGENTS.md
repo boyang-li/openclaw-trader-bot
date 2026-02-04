@@ -1,7 +1,7 @@
 # AGENTS.md - Agent Workflow Guidelines
 
 > **Purpose**: Coordination rules for AI agents working on L1-Ingestion
-> **Last Updated**: 2026-02-03
+> **Last Updated**: 2026-02-04
 > **Module**: l1-ingestion (Go sensors for ACC)
 
 ---
@@ -12,6 +12,7 @@ Before working on this codebase, read these critical files:
 1. `CLAUDE.md` - Full project documentation and patterns
 2. `internal/provider/provider.go` - Provider interface contract
 3. `internal/signal/signal.go` - Signal schema (DO NOT MODIFY)
+4. `docs/oracle_provider_research.md` - Low-cost provider candidates (useful when proposing new sensors)
 
 ### Current System Status
 ```
@@ -21,12 +22,12 @@ Before working on this codebase, read these critical files:
 ✅ FRED       (8086) - Economic indicators (needs free API key)
 ✅ Telegram   (8087) - Channel/group message ingestion
 ✅ SLM Worker        - Signal enrichment via Qwen 2.5-1.5B-Instruct
-✅ Alerter           - Telegram notifications for high-priority signals
-✅ Persister  (8088) - SQLite storage with Query API
+✅ Alerter           - Telegram/Discord alerts (ACC L1 Signals + optional L2 Insights)
+✅ Persister  (8088) - SQLite storage with Query API (snappy-enabled consumer)
+✅ L2 Reasoner (8089) - Correlation/entity engine emitting `l2.insights`
 ✅ Orchestrator      - Unified provider lifecycle management with supervision
 ⏸️ Whale Alert      - Requires paid API key
 ⏸️ TradingEcon      - Requires paid API key
-📋 L2 Reasoner      - Specified (docs/L2_L3_SPEC.md)
 📋 L3 Planner       - Specified (docs/L2_L3_SPEC.md)
 📋 L4 Paper Trading - Specified (docs/L4_SPEC.md)
 ```
@@ -86,6 +87,7 @@ Before working on this codebase, read these critical files:
 | SLM Worker | `python/slm_worker/` | Enriches signals with Qwen 2.5-1.5B model |
 | Alerter | `python/alerter/` | Sends Telegram notifications for high-priority signals |
 | Persister | `python/persister/` | Stores signals to SQLite with Query API |
+| L2 Reasoner | `python/l2_reasoner/` | Correlates enriched signals → `l2.insights` |
 
 **Python Code Patterns**:
 ```python
@@ -106,6 +108,29 @@ def should_alert(signal: dict) -> bool:
         return True
     return False
 ```
+
+---
+
+### 🧬 Insight-Dev (L2 Reasoner + Alerting Integration)
+
+**Responsibility**: Maintain the L2 correlation/entity engine and ensure L2 insights flow cleanly to downstream consumers (alerter, dashboards).
+
+**Skills Required**:
+- Async Python + aiokafka (multiple topic subscriptions)
+- Time-series correlation, rule graphs, entity resolution
+- SQLite/SQL for lightweight state + caching
+
+**Typical Tasks**:
+- Tune correlation windows / severity scoring
+- Extend `engine/` rules or entity trackers
+- Add new Grafana panels (e.g., `deploy/grafana/dashboards/l2-reasoner.json`)
+- Ensure alerter templates cleanly distinguish ACC L1 Signal vs ACC L2 Insight
+
+**Before Starting Work**:
+1. Read `python/l2_reasoner/` (engine + storage packages)
+2. Inspect `python/alerter/main.py` for dual-topic consumption + `AlertEnvelope`
+3. Review env vars `L2_ALERTS_ENABLED`, `L2_INSIGHTS_TOPIC`, `L2_MIN_SEVERITY`
+4. Tail the `l2.insights` topic via `rpk` before/after changes
 
 ---
 

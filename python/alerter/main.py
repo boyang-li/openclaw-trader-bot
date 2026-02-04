@@ -15,6 +15,7 @@ from .notifier import (
     ConsoleNotifier,
     CompositeNotifier,
     Notifier,
+    AlertEnvelope,
 )
 
 logging.basicConfig(
@@ -23,6 +24,13 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+INSIGHT_SEVERITY_LEVELS = {
+    "info": 0,
+    "warning": 1,
+    "alert": 2,
+    "critical": 3,
+}
 
 
 class AlerterService:
@@ -33,6 +41,9 @@ class AlerterService:
         self.notifier = self._build_notifier()
         self._shutdown_event = asyncio.Event()
         self._stats = {"processed": 0, "alerted": 0, "filtered": 0, "errors": 0}
+        self._insight_min_level = INSIGHT_SEVERITY_LEVELS.get(
+            config.insights.min_severity.lower(), 1
+        )
 
     def _build_notifier(self) -> Notifier:
         notifiers: list[Notifier] = []
@@ -55,9 +66,15 @@ class AlerterService:
         logger.info("Starting Alerter Service...")
         self.config.log_config()
         
+        topics: list[str] = [self.config.kafka.input_topic]
+        if self.config.insights.enabled:
+            topics.append(self.config.insights.topic)
+
+        bootstrap_servers = ",".join(self.config.kafka.brokers)
+
         self.consumer = AIOKafkaConsumer(
-            self.config.kafka.input_topic,
-            bootstrap_servers=self.config.kafka.brokers,
+            *topics,
+            bootstrap_servers=bootstrap_servers,
             group_id=self.config.kafka.consumer_group,
             auto_offset_reset=self.config.kafka.auto_offset_reset,
             enable_auto_commit=self.config.kafka.enable_auto_commit,
@@ -66,7 +83,7 @@ class AlerterService:
         )
         
         await self.consumer.start()
-        logger.info(f"Consumer started, subscribed to {self.config.kafka.input_topic}")
+        logger.info("Consumer started, subscribed to %s", ", ".join(topics))
         
         try:
             await self._consume_loop()
@@ -75,6 +92,9 @@ class AlerterService:
             logger.info(f"Alerter stopped. Stats: {self._stats}")
 
     async def _consume_loop(self):
+        if not self.consumer:
+            raise RuntimeError("Consumer not initialized")
+
         async for message in self.consumer:
             if self._shutdown_event.is_set():
                 break
@@ -89,30 +109,70 @@ class AlerterService:
         self._stats["processed"] += 1
         
         try:
-            signal_data = json.loads(message.value.decode("utf-8"))
+            payload = json.loads(message.value.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.warning(f"Failed to parse message: {e}")
             return
 
+        topic = message.topic
+
+        if topic == self.config.kafka.input_topic:
+            await self._handle_l1_signal(payload)
+            return
+
+        if self.config.insights.enabled and topic == self.config.insights.topic:
+            await self._handle_l2_insight(payload)
+            return
+
+        logger.debug("Skipping message from unexpected topic %s", topic)
+
+    async def _handle_l1_signal(self, signal_data: dict[str, Any]) -> None:
         signal_id = signal_data.get("id", "unknown")
         subject = signal_data.get("subject", "unknown")
-        
+
         filter_result = self.signal_filter.should_alert(signal_data)
-        
+
         if not filter_result.should_alert:
             self._stats["filtered"] += 1
             if filter_result.suppression_reason:
-                logger.debug(f"Signal {signal_id} filtered: {filter_result.suppression_reason}")
+                logger.debug(
+                    "Signal %s filtered: %s", signal_id, filter_result.suppression_reason
+                )
             return
 
-        logger.info(f"Alert triggered for {subject}: {filter_result.reasons}")
-        
+        logger.info("L1 alert triggered for %s: %s", subject, filter_result.reasons)
+
+        alert = AlertEnvelope(kind="l1_signal", data=signal_data, reasons=filter_result.reasons)
+        await self._dispatch_alert(alert, subject)
+
+    async def _handle_l2_insight(self, insight: dict[str, Any]) -> None:
+        severity = (insight.get("severity") or "info").lower()
+        level = INSIGHT_SEVERITY_LEVELS.get(severity, 0)
+        title = insight.get("title") or insight.get("id", "unknown-insight")
+
+        if level < self._insight_min_level:
+            self._stats["filtered"] += 1
+            logger.debug(
+                "Insight %s filtered: severity %s below minimum %s",
+                title,
+                severity,
+                self.config.insights.min_severity,
+            )
+            return
+
+        reasons = [f"severity={severity}", f"type={insight.get('type', 'unknown')}"]
+        logger.info("L2 insight alert triggered for %s: %s", title, reasons)
+
+        alert = AlertEnvelope(kind="l2_insight", data=insight, reasons=reasons)
+        await self._dispatch_alert(alert, title)
+
+    async def _dispatch_alert(self, alert: AlertEnvelope, label: str) -> None:
         if self.config.app.dry_run:
-            logger.info(f"[DRY RUN] Would send alert for {subject}")
+            logger.info("[DRY RUN] Would send %s for %s", alert.kind, label)
             self._stats["alerted"] += 1
             return
 
-        success = await self.notifier.send(signal_data, filter_result.reasons)
+        success = await self.notifier.send(alert)
         if success:
             self._stats["alerted"] += 1
         else:

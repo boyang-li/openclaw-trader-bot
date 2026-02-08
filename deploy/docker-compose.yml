@@ -109,6 +109,11 @@ services:
       - L1_LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
       - "8081:8080"
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - l1-network
@@ -132,6 +137,11 @@ services:
       - L1_LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
       - "8086:8080"
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - l1-network
@@ -156,6 +166,11 @@ services:
       - L1_LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
       - "8083:8080"
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - l1-network
@@ -179,6 +194,11 @@ services:
       - L1_LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
       - "8085:8080"
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - l1-network
@@ -201,12 +221,17 @@ services:
       - DLQ_TOPIC=l1.signals.dlq
       - CONSUMER_GROUP=slm-worker
       - MODEL_NAME=${SLM_MODEL_NAME:-Qwen/Qwen2.5-1.5B-Instruct}
-      - DEVICE=${SLM_DEVICE:-cpu}
-      - BATCH_SIZE=${SLM_BATCH_SIZE:-5}
-      - USE_4BIT=${SLM_USE_4BIT:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEVICE=cpu
+      - BATCH_SIZE=8 # 略微提升并行度
+      - USE_4BIT=true # 开启量化，降低 CPU 负担
+      - LOG_LEVEL=INFO
     volumes:
       - huggingface-cache:/app/.cache/huggingface
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - l1-network
@@ -214,9 +239,9 @@ services:
       resources:
         limits:
           cpus: "2.0" # use only 2 cores
-          memory: 2G
+          memory: 4G
         reservations:
-          memory: 1G
+          memory: 2G
 
   # ===========================================================================
   # Alerter Service (High-Priority Signal Notifications)
@@ -247,6 +272,11 @@ services:
       - L2_MIN_SEVERITY=${L2_MIN_SEVERITY:-warning}
       - ALERTER_DRY_RUN=${ALERTER_DRY_RUN:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - l1-network
@@ -282,6 +312,11 @@ services:
       - "8088:8080"
     volumes:
       - persister-data:/data
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -325,6 +360,11 @@ services:
       - "8089:8080"
     volumes:
       - l2-reasoner-data:/data
+    logging: # 新增：限制日志大小，保护硬盘空间
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]

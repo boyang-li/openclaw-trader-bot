@@ -1,6 +1,6 @@
+import logging
 import os
 from dataclasses import dataclass
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class KafkaConfig:
     def from_env(cls) -> "KafkaConfig":
         brokers_str = get_env("KAFKA_BROKERS", "localhost:9092")
         brokers = [b.strip() for b in brokers_str.split(",") if b.strip()]
-        
+
         return cls(
             brokers=brokers,
             input_topic=get_env("INPUT_TOPIC", "l1.signals.enriched"),
@@ -124,8 +124,10 @@ class FilterConfig:
         return cls(
             min_urgency=get_env("MIN_URGENCY", "high"),
             min_sentiment_magnitude=get_env_float("MIN_SENTIMENT_MAGNITUDE", 0.5),
-            alert_market_impacts=get_env_list("ALERT_MARKET_IMPACTS", 
-                ["positive", "negative", "highly_positive", "highly_negative"]),
+            alert_market_impacts=get_env_list(
+                "ALERT_MARKET_IMPACTS",
+                ["positive", "negative", "highly_positive", "highly_negative"],
+            ),
             alert_categories=get_env_list("ALERT_CATEGORIES", []),
             alert_sources=get_env_list("ALERT_SOURCES", []),
             rate_limit_per_minute=get_env_int("RATE_LIMIT_PER_MINUTE", 30),
@@ -157,12 +159,13 @@ class AppConfig:
     @classmethod
     def from_env(cls) -> "AppConfig":
         import socket
+
         hostname = socket.gethostname()
-        
+
         return cls(
             log_level=get_env("LOG_LEVEL", "INFO"),
             worker_id=get_env("WORKER_ID", f"alerter-{hostname}"),
-            dry_run=get_env_bool("DRY_RUN", False),
+            dry_run=get_env_bool("ALERTER_DRY_RUN", False),
         )
 
 
@@ -191,8 +194,12 @@ class Config:
         logger.info(f"Kafka brokers: {self.kafka.brokers}")
         logger.info(f"Input topic: {self.kafka.input_topic}")
         logger.info(f"Consumer group: {self.kafka.consumer_group}")
-        logger.info(f"Telegram enabled: {self.telegram.enabled} (configured: {self.telegram.is_configured()})")
-        logger.info(f"Discord enabled: {self.discord.enabled} (configured: {self.discord.is_configured()})")
+        logger.info(
+            f"Telegram enabled: {self.telegram.enabled} (configured: {self.telegram.is_configured()})"
+        )
+        logger.info(
+            f"Discord enabled: {self.discord.enabled} (configured: {self.discord.is_configured()})"
+        )
         logger.info(
             "L2 alerts: enabled=%s topic=%s min_severity=%s",
             self.insights.enabled,

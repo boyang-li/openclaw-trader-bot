@@ -1,15 +1,35 @@
 # =============================================================================
-# ACC L1-Ingestion: Docker Compose Stack (Final Optimized Version)
+# ACC L1-Ingestion: Docker Compose Stack
 # =============================================================================
-# 系统状态：已针对 Trigkey (192.168.2.81) 进行内网穿透优化
-# 监控地址：
-#   - Redpanda Console: http://192.168.2.81:8080
-#   - Grafana: http://192.168.2.81:3000
+# Version: 2.0 (Redpanda-based, fully containerized)
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose up -d
+#
+# Services:
+#   - Redpanda (Kafka-compatible broker)
+#   - Go Providers (GDELT, FRED, Binance, COT)
+#   - Python Services (SLM Worker, Alerter, Persister)
+#   - Prometheus + Grafana (Observability)
+#   - Redis (Rate limiting, caching)
+#
+# Ports:
+#   - 8081: GDELT provider health
+#   - 8082: FRED provider health
+#   - 8083: Binance provider health
+#   - 8085: COT provider health
+#   - 8088: Persister API (query signals)
+#   - 9092: Redpanda Kafka API
+#   - 9644: Redpanda Admin API
+#   - 9090: Prometheus
+#   - 3000: Grafana
+#   - 6379: Redis
 # =============================================================================
 
 services:
   # ===========================================================================
-  # Message Broker: Redpanda
+  # Message Broker: Redpanda (Kafka-compatible, single binary, no Zookeeper)
   # ===========================================================================
   redpanda:
     image: redpandadata/redpanda:v23.3.5
@@ -22,15 +42,14 @@ services:
       - --reserve-memory=0M
       - --overprovisioned
       - --node-id=0
-      # 内部监听 29092 供容器使用，外部监听 9092 供局域网 M4 使用
-      - --kafka-addr=INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
-      - --advertise-kafka-addr=INTERNAL://l1-redpanda:29092,EXTERNAL://192.168.2.81:9092
-      - --pandaproxy-addr=INTERNAL://0.0.0.0:28082,EXTERNAL://0.0.0.0:8082
-      - --advertise-pandaproxy-addr=INTERNAL://l1-redpanda:28082,EXTERNAL://192.168.2.81:8082
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+      - --pandaproxy-addr=0.0.0.0:8082
+      - --advertise-pandaproxy-addr=redpanda:8082
     ports:
-      - "9092:9092"
-      - "8082:8082"
-      - "9644:9644"
+      - "9092:9092" # Kafka API
+      - "9644:9644" # Admin API
+      - "8082:8082" # REST Proxy (Pandaproxy)
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -38,181 +57,368 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
     networks:
       - l1-network
 
-  # Redpanda 可视化监控 (新增)
-  redpanda-console:
-    image: docker.redpanda.com/redpandadata/console:v2.3.8
-    container_name: l1-redpanda-console
+  # ===========================================================================
+  # Topic Initialization (runs once)
+  # ===========================================================================
+  redpanda-init:
+    image: redpandadata/redpanda:v23.3.5
+    container_name: l1-redpanda-init
     depends_on:
       redpanda:
         condition: service_healthy
-    environment:
-      - KAFKA_BROKERS=l1-redpanda:29092
-    ports:
-      - "8080:8080"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo 'Creating topics...'
+        rpk topic create l1.signals.raw --brokers redpanda:9092 --partitions 6 --config retention.ms=604800000 --config max.message.bytes=10485760 || true
+        rpk topic create l1.signals.enriched --brokers redpanda:9092 --partitions 6 --config retention.ms=604800000 || true
+        rpk topic create l1.signals.filtered --brokers redpanda:9092 --partitions 3 --config retention.ms=2592000000 || true
+        rpk topic create l1.signals.dlq --brokers redpanda:9092 --partitions 1 --config retention.ms=2592000000 || true
+        rpk topic create l2.insights --brokers redpanda:9092 --partitions 6 --config retention.ms=604800000 --config cleanup.policy=delete || true
+        rpk topic create l2.situations --brokers redpanda:9092 --partitions 3 --config retention.ms=2592000000 --config cleanup.policy=compact || true
+        rpk topic create l2.entities --brokers redpanda:9092 --partitions 6 --config retention.ms=-1 --config cleanup.policy=compact || true
+        echo 'Topics created:'
+        rpk topic list --brokers redpanda:9092
     networks:
       - l1-network
 
   # ===========================================================================
-  # Go Providers (Data Ingestion)
+  # Go Provider Services (Free APIs only for MVP)
   # ===========================================================================
+
+  # GDELT - Global Event Database (Geopolitical)
   gdelt:
     build:
       context: ..
-      dockerfile: ./build/package/Dockerfile.provider
+      dockerfile: deploy/docker/Dockerfile.provider
       args:
-        SERVICE_NAME: gdelt
+        PROVIDER: gdelt
     container_name: l1-gdelt
     depends_on:
       redpanda:
         condition: service_healthy
     environment:
-      - L1_KAFKA_BROKERS=l1-redpanda:29092
+      - L1_KAFKA_BROKERS=redpanda:9092
       - L1_KAFKA_TOPIC_RAW=l1.signals.raw
+      - L1_GDELT_ENABLED=true
+      - L1_GDELT_POLL_INTERVAL=${GDELT_POLL_INTERVAL:-15m}
+      - L1_LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
     networks:
       - l1-network
 
+  # FRED - Federal Reserve Economic Data (Macro)
+  fred:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.provider
+      args:
+        PROVIDER: fred
+    container_name: l1-fred
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - L1_KAFKA_BROKERS=redpanda:9092
+      - L1_KAFKA_TOPIC_RAW=l1.signals.raw
+      - L1_FRED_API_KEY=${FRED_API_KEY:?FRED_API_KEY is required}
+      - L1_FRED_POLL_INTERVAL=${FRED_POLL_INTERVAL:-1h}
+      - L1_LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "8086:8080"
+    restart: unless-stopped
+    networks:
+      - l1-network
+
+  # Binance - Cryptocurrency Market Data (Crypto)
   binance:
     build:
       context: ..
-      dockerfile: ./build/package/Dockerfile.provider
+      dockerfile: deploy/docker/Dockerfile.provider
       args:
-        SERVICE_NAME: binance
+        PROVIDER: binance
     container_name: l1-binance
     depends_on:
       redpanda:
         condition: service_healthy
     environment:
-      - L1_KAFKA_BROKERS=l1-redpanda:29092
-      - BINANCE_API_KEY=${BINANCE_API_KEY}
-      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
+      - L1_KAFKA_BROKERS=redpanda:9092
+      - L1_KAFKA_TOPIC_RAW=l1.signals.raw
+      - L1_BINANCE_PAIRS=${BINANCE_PAIRS:-BTCUSDT,ETHUSDT}
+      - L1_BINANCE_LARGE_TRADE_THRESHOLD_USD=${BINANCE_LARGE_TRADE_THRESHOLD:-100000}
+      - L1_BINANCE_PRICE_CHANGE_THRESHOLD_PCT=${BINANCE_PRICE_CHANGE_THRESHOLD:-1.0}
+      - L1_LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "8083:8080"
+    restart: unless-stopped
     networks:
       - l1-network
 
-  fred:
-    build:
-      context: ..
-      dockerfile: ./build/package/Dockerfile.provider
-      args:
-        SERVICE_NAME: fred
-    container_name: l1-fred
-    environment:
-      - L1_KAFKA_BROKERS=l1-redpanda:29092
-    networks:
-      - l1-network
-
+  # CME COT - Commitment of Traders Report (Macro)
   cot:
     build:
       context: ..
-      dockerfile: ./build/package/Dockerfile.provider
+      dockerfile: deploy/docker/Dockerfile.provider
       args:
-        SERVICE_NAME: cot
+        PROVIDER: cot
     container_name: l1-cot
-    environment:
-      - L1_KAFKA_BROKERS=l1-redpanda:29092
-    networks:
-      - l1-network
-
-  # ===========================================================================
-  # Python Services (Processing & Storage)
-  # ===========================================================================
-  slm-worker:
-    build:
-      context: ..
-      dockerfile: ./build/package/Dockerfile.python
-      args:
-        SERVICE_NAME: slm_worker
-    container_name: l1-slm-worker
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 2048M
     depends_on:
       redpanda:
         condition: service_healthy
     environment:
-      - KAFKA_BROKER=l1-redpanda:29092
-    networks:
-      - l1-network
-
-  persister:
-    build:
-      context: ..
-      dockerfile: ./build/package/Dockerfile.python
-      args:
-        SERVICE_NAME: persister
-    container_name: l1-persister
-    environment:
-      - KAFKA_BROKER=l1-redpanda:29092
-    networks:
-      - l1-network
-
-  alerter:
-    build:
-      context: ..
-      dockerfile: ./build/package/Dockerfile.python
-      args:
-        SERVICE_NAME: alerter
-    container_name: l1-alerter
-    environment:
-      - KAFKA_BROKER=l1-redpanda:29092
-    networks:
-      - l1-network
-
-  l2-reasoner:
-    build:
-      context: ..
-      dockerfile: ./build/package/Dockerfile.python
-      args:
-        SERVICE_NAME: l2_reasoner
-    container_name: l2-reasoner
-    environment:
-      - KAFKA_BROKER=l1-redpanda:29092
+      - L1_KAFKA_BROKERS=redpanda:9092
+      - L1_KAFKA_TOPIC_RAW=l1.signals.raw
+      - L1_COT_ENABLED=true
+      - L1_COT_POLL_INTERVAL=${COT_POLL_INTERVAL:-6h}
+      - L1_LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "8085:8080"
+    restart: unless-stopped
     networks:
       - l1-network
 
   # ===========================================================================
-  # Observability & Infrastructure
+  # Python SLM Worker (Signal Enrichment)
+  # ===========================================================================
+  slm-worker:
+    build:
+      context: ../python
+      dockerfile: Dockerfile
+    container_name: l1-slm-worker
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - INPUT_TOPIC=l1.signals.raw
+      - OUTPUT_TOPIC=l1.signals.enriched
+      - DLQ_TOPIC=l1.signals.dlq
+      - CONSUMER_GROUP=slm-worker
+      - MODEL_NAME=${SLM_MODEL_NAME:-Qwen/Qwen2.5-1.5B-Instruct}
+      - DEVICE=${SLM_DEVICE:-cpu}
+      - BATCH_SIZE=${SLM_BATCH_SIZE:-5}
+      - USE_4BIT=${SLM_USE_4BIT:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - huggingface-cache:/app/.cache/huggingface
+    restart: unless-stopped
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0" # use only 2 cores
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # ===========================================================================
+  # Alerter Service (High-Priority Signal Notifications)
+  # ===========================================================================
+  alerter:
+    build:
+      context: ../python
+      dockerfile: alerter/Dockerfile
+    container_name: l1-alerter
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - INPUT_TOPIC=l1.signals.enriched
+      - CONSUMER_GROUP=alerter
+      - MIN_URGENCY=${ALERTER_MIN_URGENCY:-high}
+      - MIN_SENTIMENT_MAGNITUDE=${ALERTER_MIN_SENTIMENT:-0.5}
+      - RATE_LIMIT_PER_MINUTE=${ALERTER_RATE_LIMIT:-30}
+      - DEDUP_WINDOW_SECONDS=${ALERTER_DEDUP_WINDOW:-300}
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - DISCORD_ENABLED=${DISCORD_ENABLED:-false}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - L2_ALERTS_ENABLED=${L2_ALERTS_ENABLED:-false}
+      - L2_INSIGHTS_TOPIC=${L2_INSIGHTS_TOPIC:-l2.insights}
+      - L2_MIN_SEVERITY=${L2_MIN_SEVERITY:-warning}
+      - DRY_RUN=${ALERTER_DRY_RUN:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ===========================================================================
+  # Persister Service (Signal Storage to SQLite)
+  # ===========================================================================
+  persister:
+    build:
+      context: ../python
+      dockerfile: persister/Dockerfile
+    container_name: l1-persister
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - INPUT_TOPIC=l1.signals.enriched
+      - CONSUMER_GROUP=persister
+      - DB_PATH=/data/signals.db
+      - DB_JOURNAL_MODE=WAL
+      - BATCH_SIZE=${PERSISTER_BATCH_SIZE:-50}
+      - DEDUP_WINDOW_HOURS=${PERSISTER_DEDUP_HOURS:-24}
+      - API_ENABLED=true
+      - API_PORT=8080
+      - API_MAX_RESULTS=${PERSISTER_MAX_RESULTS:-1000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8088:8080"
+    volumes:
+      - persister-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ===========================================================================
+  # L2 Reasoner (Correlation + Entity Tracking)
+  # ===========================================================================
+  l2-reasoner:
+    build:
+      context: ../python
+      dockerfile: l2_reasoner/Dockerfile
+    container_name: l2-reasoner
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      - L2_KAFKA_BROKERS=redpanda:9092
+      - L2_KAFKA_INPUT_TOPIC=l1.signals.enriched
+      - L2_KAFKA_CONSUMER_GROUP=l2-reasoner
+      - L2_OUTPUT_INSIGHTS_TOPIC=l2.insights
+      - L2_OUTPUT_SITUATIONS_TOPIC=l2.situations
+      - L2_OUTPUT_ENTITIES_TOPIC=l2.entities
+      - L2_KAFKA_DLQ_TOPIC=l1.signals.dlq
+      - L2_DB_PATH=/data/l2_reasoner.db
+      - L2_CORRELATION_WINDOW_HOURS=${L2_CORRELATION_WINDOW_HOURS:-4}
+      - L2_ANOMALY_ZSCORE_THRESHOLD=${L2_ANOMALY_ZSCORE_THRESHOLD:-2.5}
+      - L2_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - L2_METRICS_PORT=8080
+      - L2_HEALTH_PORT=8080
+    ports:
+      - "8089:8080"
+    volumes:
+      - l2-reasoner-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - l1-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ===========================================================================
+  # Monitoring Stack
   # ===========================================================================
   prometheus:
     image: prom/prometheus:v2.47.0
     container_name: l1-prometheus
+    ports:
+      - "9090:9090"
     volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
-      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - l1-network
 
   grafana:
     image: grafana/grafana:10.2.0
     container_name: l1-grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
     ports:
       - "3000:3000"
     environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - l1-network
 
+  # ===========================================================================
+  # Redis (for rate limiting and caching)
+  # ===========================================================================
   redis:
     image: redis:7-alpine
     container_name: l1-redis
     ports:
       - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - l1-network
 
+# =============================================================================
+# Networks
+# =============================================================================
 networks:
   l1-network:
     driver: bridge
     name: l1-ingestion-network
 
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
   redpanda-data:
   prometheus-data:
   grafana-data:
   redis-data:
+  huggingface-cache:
+  persister-data:
+  l2-reasoner-data:

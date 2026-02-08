@@ -27,21 +27,23 @@ jobs:
   # --- 新增部署逻辑：在 Trigkey 本机运行 ---
   deploy:
     name: Deploy to Trigkey
-    needs: test-and-build # 只有测试通过才部署
-    if: github.ref == 'refs/heads/main' # 仅限 main 分支触发部署
-    runs-on: self-hosted # <--- 核心修改：指定在你的 Trigkey 上运行
+    needs: test-and-build
+    if: github.ref == 'refs/heads/main'
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Deploy with Docker Compose
         run: |
-          # 1. 停止旧容器并清理（可选）
-          docker compose down
-          # 2. 重新构建并后台启动
-          # 注意：因为是 self-hosted，它会直接在 Trigkey 物理机执行这行
-          docker compose up -d --build
-        working-directory: ./deploy
+          # 打印当前目录内容，以便在日志中二次确认路径
+          echo "Scanning for docker-compose in ./deploy..."
+          ls -la ./deploy
+
+          # 使用 -f 明确指向文件位置
+          # --project-directory . 确保 Docker 在构建时能找到项目根目录的代码
+          docker compose -f ./deploy/docker-compose.yml down --remove-orphans
+          docker compose -f ./deploy/docker-compose.yml up -d --build
 
       - name: Cleanup dangling images
         run: docker image prune -f

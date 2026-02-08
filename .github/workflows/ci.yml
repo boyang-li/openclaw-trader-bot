@@ -34,6 +34,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Create .env file
+        # 这一步会在执行 docker compose 之前，把 GitHub 里的加密变量写进文件
+        run: |
+          echo "${{ secrets.DOTENV_FILE }}" > ./deploy/.env
+          # 为了安全，修改权限只允许当前用户读取
+          chmod 600 ./deploy/.env
+
       - name: Deploy with Docker Compose
         run: |
           # 打印当前目录内容，以便在日志中二次确认路径

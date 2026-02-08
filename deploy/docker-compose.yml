@@ -60,7 +60,7 @@ services:
   # ===========================================================================
   gdelt:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: gdelt
@@ -76,7 +76,7 @@ services:
 
   binance:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: binance
@@ -93,7 +93,7 @@ services:
 
   fred:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: fred
@@ -105,7 +105,7 @@ services:
 
   cot:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: cot
@@ -120,7 +120,7 @@ services:
   # ===========================================================================
   slm-worker:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: slm_worker
@@ -140,7 +140,7 @@ services:
 
   persister:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: persister
@@ -152,7 +152,7 @@ services:
 
   alerter:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: alerter
@@ -164,7 +164,7 @@ services:
 
   l2-reasoner:
     build:
-      context: ../
+      context: ..
       dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: l2_reasoner

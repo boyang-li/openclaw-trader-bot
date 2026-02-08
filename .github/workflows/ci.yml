@@ -41,6 +41,7 @@ jobs:
           # 2. 重新构建并后台启动
           # 注意：因为是 self-hosted，它会直接在 Trigkey 物理机执行这行
           docker compose up -d --build
+        working-directory: ./deploy
 
       - name: Cleanup dangling images
         run: docker image prune -f

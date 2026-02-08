@@ -60,8 +60,8 @@ services:
   # ===========================================================================
   gdelt:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.provider
+      context: ../
+      dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: gdelt
     container_name: l1-gdelt
@@ -76,8 +76,8 @@ services:
 
   binance:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.provider
+      context: ../
+      dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: binance
     container_name: l1-binance
@@ -93,8 +93,8 @@ services:
 
   fred:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.provider
+      context: ../
+      dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: fred
     container_name: l1-fred
@@ -105,8 +105,8 @@ services:
 
   cot:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.provider
+      context: ../
+      dockerfile: ./build/package/Dockerfile.provider
       args:
         SERVICE_NAME: cot
     container_name: l1-cot
@@ -120,8 +120,8 @@ services:
   # ===========================================================================
   slm-worker:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.python
+      context: ../
+      dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: slm_worker
     container_name: l1-slm-worker
@@ -140,8 +140,8 @@ services:
 
   persister:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.python
+      context: ../
+      dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: persister
     container_name: l1-persister
@@ -152,8 +152,8 @@ services:
 
   alerter:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.python
+      context: ../
+      dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: alerter
     container_name: l1-alerter
@@ -164,8 +164,8 @@ services:
 
   l2-reasoner:
     build:
-      context: ..
-      dockerfile: build/package/Dockerfile.python
+      context: ../
+      dockerfile: ./build/package/Dockerfile.python
       args:
         SERVICE_NAME: l2_reasoner
     container_name: l2-reasoner

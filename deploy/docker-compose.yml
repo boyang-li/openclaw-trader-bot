@@ -2,7 +2,7 @@
 # ACC L1-Ingestion: Docker Compose Stack
 # =============================================================================
 # Version: 2.0 (Redpanda-based, fully containerized)
-# 
+#
 # Usage:
 #   cp .env.example .env
 #   docker compose up -d
@@ -47,9 +47,9 @@ services:
       - --pandaproxy-addr=0.0.0.0:8082
       - --advertise-pandaproxy-addr=redpanda:8082
     ports:
-      - "9092:9092"     # Kafka API
-      - "9644:9644"     # Admin API
-      - "8082:8082"     # REST Proxy (Pandaproxy)
+      - "9092:9092" # Kafka API
+      - "9644:9644" # Admin API
+      - "8082:8082" # REST Proxy (Pandaproxy)
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -89,7 +89,7 @@ services:
   # ===========================================================================
   # Go Provider Services (Free APIs only for MVP)
   # ===========================================================================
-  
+
   # GDELT - Global Event Database (Geopolitical)
   gdelt:
     build:
@@ -183,7 +183,6 @@ services:
     networks:
       - l1-network
 
-
   # ===========================================================================
   # Python SLM Worker (Signal Enrichment)
   # ===========================================================================
@@ -214,9 +213,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
+          cpus: "2.0" # 只准用 2 个核
+          memory: 2G
         reservations:
-          memory: 4G
+          memory: 1G
 
   # ===========================================================================
   # Alerter Service (High-Priority Signal Notifications)
@@ -351,11 +351,11 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
-      - '--web.enable-lifecycle'
-      - '--web.enable-admin-api'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
       interval: 10s

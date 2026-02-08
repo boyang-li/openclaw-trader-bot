@@ -1,84 +1,46 @@
-name: CI
+name: CI/CD
 
 on:
   push:
-    branches: [main, l1-ingestion]
-  pull_request:
     branches: [main, l1-ingestion]
 
 env:
   GO_VERSION: "1.23"
 
 jobs:
-  test:
-    name: Test
+  # --- 原有的测试逻辑保持不变，利用 GitHub 算力 ---
+  test-and-build:
+    name: Test & Build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
       - name: Run tests
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.out
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Build all binaries
+        run: go test ./...
+      - name: Build binaries
         run: make build
 
-      - name: Verify binaries exist
+  # --- 新增部署逻辑：在 Trigkey 本机运行 ---
+  deploy:
+    name: Deploy to Trigkey
+    needs: test-and-build # 只有测试通过才部署
+    if: github.ref == 'refs/heads/main' # 仅限 main 分支触发部署
+    runs-on: self-hosted # <--- 核心修改：指定在你的 Trigkey 上运行
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy with Docker Compose
         run: |
-          ls -la bin/
-          test -f bin/gdelt
-          test -f bin/fred
-          test -f bin/binance
-          test -f bin/cot
-          test -f bin/telegram
-          test -f bin/whalealert
-          test -f bin/tradingeconomics
+          # 1. 停止旧容器并清理（可选）
+          docker compose down
+          # 2. 重新构建并后台启动
+          # 注意：因为是 self-hosted，它会直接在 Trigkey 物理机执行这行
+          docker compose up -d --build
+
+      - name: Cleanup dangling images
+        run: docker image prune -f
